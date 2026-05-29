@@ -1,0 +1,359 @@
+{% extends "base.html" %}
+{% block extra_head %}
+<style>
+    .admin-container {
+        max-width: 1000px;
+        margin: 0 auto;
+        padding: 2rem;
+    }
+    h1 { font-size: 1.8rem; margin-bottom: 2rem; color: #e94560; }
+    h2 { font-size: 1.3rem; margin: 1.5rem 0 1rem; color: #ccc; border-bottom: 1px solid #333; padding-bottom: 0.5rem; }
+    .card {
+        background: #16213e;
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+    form { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: flex-end; }
+    form label { font-size: 0.85rem; color: #aaa; display: block; margin-bottom: 0.25rem; }
+    form input, form select, form textarea {
+        background: #1a1a2e;
+        border: 1px solid #333;
+        color: #eee;
+        padding: 0.5rem;
+        border-radius: 4px;
+        font-size: 0.95rem;
+    }
+    form textarea { width: 100%; min-height: 60px; resize: vertical; }
+    .btn {
+        background: #e94560;
+        color: #fff;
+        border: none;
+        padding: 0.5rem 1rem;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.95rem;
+    }
+    .btn:hover { background: #c73650; }
+    .btn-small {
+        background: #333;
+        color: #eee;
+        border: none;
+        padding: 0.3rem 0.6rem;
+        border-radius: 3px;
+        cursor: pointer;
+        font-size: 0.8rem;
+    }
+    .btn-small:hover { background: #555; }
+    .btn-danger { background: #a33; }
+    .btn-danger:hover { background: #822; }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 0.5rem;
+    }
+    th, td {
+        padding: 0.6rem 0.8rem;
+        text-align: left;
+        border-bottom: 1px solid #333;
+        font-size: 0.95rem;
+    }
+    th { color: #aaa; font-weight: normal; }
+    .back-link {
+        display: inline-block;
+        margin-bottom: 1rem;
+        color: #e94560;
+    }
+    .empty { color: #666; font-style: italic; padding: 1rem 0; }
+    .ann-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.8rem 0;
+        border-bottom: 1px solid #333;
+    }
+    .ann-item .text { flex: 1; }
+    .ann-item .date { color: #666; font-size: 0.8rem; margin-left: 1rem; }
+    .ann-item .inactive { color: #666; font-size: 0.8rem; margin-left: 0.5rem; }
+    .form-row { display: flex; gap: 0.5rem; align-items: flex-end; flex-wrap: wrap; }
+    .form-row .field { display: flex; flex-direction: column; }
+    .nav-tabs {
+        display: flex;
+        gap: 0;
+        margin-bottom: 2rem;
+        border-bottom: 1px solid #333;
+    }
+    .nav-tabs a {
+        padding: 0.7rem 1.5rem;
+        color: #888;
+        text-decoration: none;
+        border-bottom: 2px solid transparent;
+        transition: all 0.2s;
+        font-size: 1rem;
+    }
+    .nav-tabs a:hover { color: #eee; }
+    .nav-tabs a.active {
+        color: #e94560;
+        border-bottom-color: #e94560;
+        font-weight: 600;
+    }
+    .search-form {
+        display: flex;
+        gap: 0.8rem;
+        align-items: flex-end;
+        flex-wrap: wrap;
+        margin-bottom: 1rem;
+    }
+    .search-form .field { display: flex; flex-direction: column; }
+    .search-form .field label { font-size: 0.85rem; color: #aaa; display: block; margin-bottom: 0.25rem; }
+    .search-form .field input {
+        background: #1a1a2e;
+        border: 1px solid #333;
+        color: #eee;
+        padding: 0.5rem;
+        border-radius: 4px;
+        font-size: 0.95rem;
+    }
+    .search-form .btn-clear {
+        background: transparent;
+        color: #888;
+        border: 1px solid #444;
+        padding: 0.5rem 1rem;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.9rem;
+    }
+    .search-form .btn-clear:hover { color: #eee; border-color: #888; }
+    .search-count { color: #888; font-size: 0.9rem; margin-bottom: 0.5rem; }
+    .pagination {
+        display: flex;
+        gap: 0.3rem;
+        justify-content: center;
+        align-items: center;
+        margin-top: 1rem;
+        flex-wrap: wrap;
+    }
+    .pagination a, .pagination span {
+        padding: 0.4rem 0.7rem;
+        border-radius: 4px;
+        font-size: 0.9rem;
+        text-decoration: none;
+        color: #888;
+        background: #1a1a2e;
+        border: 1px solid #333;
+        transition: all 0.2s;
+    }
+    .pagination a:hover { color: #eee; border-color: #e94560; }
+    .pagination .active-page {
+        background: #e94560;
+        color: #fff;
+        border-color: #e94560;
+    }
+    .pagination .dots { background: transparent; border: none; color: #666; }
+    .pagination .disabled { opacity: 0.3; pointer-events: none; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="admin-container">
+    <a class="back-link" href="/">← На главную</a>
+    <h1>{{ title }}</h1>
+
+    <div class="nav-tabs">
+        <a href="/admin/employees"{% if section == 'employees' %} class="active"{% endif %}>Сотрудники</a>
+        <a href="/admin/announcements"{% if section == 'announcements' %} class="active"{% endif %}>Объявления</a>
+    </div>
+
+    {% if section == 'employees' %}
+
+    <div class="card">
+        <h2>Поиск сотрудников</h2>
+        <form class="search-form" action="/admin/employees" method="get">
+            <div class="field">
+                <label>ФИО</label>
+                <input type="text" name="name" placeholder="Иванов" value="{{ search_name }}">
+            </div>
+            <div class="field">
+                <label>Дата рождения</label>
+                <input type="date" name="birthday" value="{{ search_birthday }}">
+            </div>
+            <button class="btn" type="submit">Найти</button>
+            {% if search_name or search_birthday %}
+            <a href="/admin/employees" class="btn-clear">Сбросить</a>
+            {% endif %}
+        </form>
+    </div>
+
+    <div class="card">
+        <h2>Добавить сотрудника</h2>
+        <form action="/admin/employees/add" method="post">
+            <div class="field">
+                <label>ФИО</label>
+                <input type="text" name="name" required placeholder="Иванов Иван Иванович">
+            </div>
+            <div class="field">
+                <label>Дата рождения</label>
+                <input type="date" name="birthday" required value="{{ today.isoformat() }}">
+            </div>
+            <div class="field">
+                <label>Пол</label>
+                <select name="gender" required>
+                    <option value="male">Мужской</option>
+                    <option value="female">Женский</option>
+                </select>
+            </div>
+            <button class="btn" type="submit">Добавить</button>
+        </form>
+    </div>
+
+    <div class="card">
+        <h2>Сотрудники</h2>
+        <div class="search-count">Найдено: {{ total }}</div>
+        {% if employees %}
+        <table>
+            <thead>
+                <tr><th>ФИО</th><th>Дата рождения</th><th>Пол</th><th></th></tr>
+            </thead>
+            <tbody>
+                {% for emp in employees %}
+                <tr>
+                    <td>{{ emp.name }}</td>
+                    <td>{{ emp.birthday }}</td>
+                    <td>{{ 'Мужской' if emp.gender == 'male' else 'Женский' }}</td>
+                    <td>
+                        <form action="/admin/employees/{{ emp.id }}/delete" method="post" onsubmit="return confirm('Удалить сотрудника?')">
+                            <button class="btn-small btn-danger" type="submit">Удалить</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% if total_pages > 1 %}
+        <div class="pagination">
+            {% if page > 1 %}
+            <a href="?{{ 'name=' + search_name + '&' if search_name }}{{ 'birthday=' + search_birthday + '&' if search_birthday }}page={{ page - 1 }}">← Назад</a>
+            {% else %}
+            <span class="disabled">← Назад</span>
+            {% endif %}
+            {% for p in range(1, total_pages + 1) %}
+                {% if p == page %}
+                <span class="active-page">{{ p }}</span>
+                {% elif p == 1 or p == total_pages or (p >= page - 2 and p <= page + 2) %}
+                <a href="?{{ 'name=' + search_name + '&' if search_name }}{{ 'birthday=' + search_birthday + '&' if search_birthday }}page={{ p }}">{{ p }}</a>
+                {% elif p == page - 3 or p == page + 3 %}
+                <span class="dots">…</span>
+                {% endif %}
+            {% endfor %}
+            {% if page < total_pages %}
+            <a href="?{{ 'name=' + search_name + '&' if search_name }}{{ 'birthday=' + search_birthday + '&' if search_birthday }}page={{ page + 1 }}">Вперед →</a>
+            {% else %}
+            <span class="disabled">Вперед →</span>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% else %}
+        <div class="empty">Сотрудники не найдены</div>
+        {% endif %}
+    </div>
+
+    {% elif section == 'announcements' %}
+
+    <div class="card">
+        <h2>Поиск по датам</h2>
+        <form class="search-form" action="/admin/announcements" method="get">
+            <div class="field">
+                <label>Дата начала (date_from ≥)</label>
+                <input type="date" name="search_date_from" value="{{ search_date_from }}">
+            </div>
+            <div class="field">
+                <label>Дата окончания (date_to ≤)</label>
+                <input type="date" name="search_date_to" value="{{ search_date_to }}">
+            </div>
+            <button class="btn" type="submit">Найти</button>
+            {% if search_date_from or search_date_to %}
+            <a href="/admin/announcements" class="btn-clear">Сбросить</a>
+            {% endif %}
+        </form>
+    </div>
+
+    <div class="card">
+        <h2>Добавить объявление</h2>
+        <form action="/admin/announcements/add" method="post">
+            <div style="flex:1;display:flex;flex-direction:column;">
+                <label>Текст объявления</label>
+                <textarea name="text" required placeholder="Текст корпоративного объявления..."></textarea>
+            </div>
+            <div class="field">
+                <label>Показывать с</label>
+                <input type="date" name="date_from" placeholder="Не обязательно">
+            </div>
+            <div class="field">
+                <label>Показывать по</label>
+                <input type="date" name="date_to" placeholder="Не обязательно">
+            </div>
+            <button class="btn" type="submit">Опубликовать</button>
+        </form>
+    </div>
+
+    <div class="card">
+        <h2>Объявления</h2>
+        <div class="search-count">Всего: {{ total }}</div>
+        {% if announcements %}
+            {% for ann in announcements %}
+            <div class="ann-item">
+                <div class="text">
+                    {{ ann.text }}
+                    {% if ann.date_from or ann.date_to %}
+                    <br><span class="date">
+                        даты: {{ ann.date_from or '...' }} — {{ ann.date_to or '...' }}
+                    </span>
+                    {% endif %}
+                </div>
+                <div>
+                    <span class="date">{{ ann.created_at[:10] }}</span>
+                    {% if not ann.is_active %}
+                    <span class="inactive">(неактивно)</span>
+                    {% endif %}
+                    {% if ann.is_active %}
+                    <form action="/admin/announcements/{{ ann.id }}/deactivate" method="post" style="display:inline;">
+                        <button class="btn-small" type="submit">Деактивировать</button>
+                    </form>
+                    {% endif %}
+                    <form action="/admin/announcements/{{ ann.id }}/delete" method="post" style="display:inline;" onsubmit="return confirm('Удалить объявление?')">
+                        <button class="btn-small btn-danger" type="submit">Удалить</button>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+        {% if total_pages > 1 %}
+        <div class="pagination">
+            {% if page > 1 %}
+            <a href="/admin/announcements?{{ 'search_date_from=' + search_date_from + '&' if search_date_from }}{{ 'search_date_to=' + search_date_to + '&' if search_date_to }}page={{ page - 1 }}">← Назад</a>
+            {% else %}
+            <span class="disabled">← Назад</span>
+            {% endif %}
+            {% for p in range(1, total_pages + 1) %}
+                {% if p == page %}
+                <span class="active-page">{{ p }}</span>
+                {% elif p == 1 or p == total_pages or (p >= page - 2 and p <= page + 2) %}
+                <a href="/admin/announcements?{{ 'search_date_from=' + search_date_from + '&' if search_date_from }}{{ 'search_date_to=' + search_date_to + '&' if search_date_to }}page={{ p }}">{{ p }}</a>
+                {% elif p == page - 3 or p == page + 3 %}
+                <span class="dots">…</span>
+                {% endif %}
+            {% endfor %}
+            {% if page < total_pages %}
+            <a href="/admin/announcements?{{ 'search_date_from=' + search_date_from + '&' if search_date_from }}{{ 'search_date_to=' + search_date_to + '&' if search_date_to }}page={{ page + 1 }}">Вперед →</a>
+            {% else %}
+            <span class="disabled">Вперед →</span>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% else %}
+        <div class="empty">Объявлений нет</div>
+        {% endif %}
+    </div>
+
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,9 @@
+.venv/
+.env
+*.pyc
+__pycache__/
+data/*.db
+data/*.db-wal
+data/*.db-shm
+app/static/greetings/*
+!app/static/greetings/.gitkeep

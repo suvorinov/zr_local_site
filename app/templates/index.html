@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block extra_head %}
+<style>
+    .container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        background: #0f0f23;
+        position: relative;
+        overflow: hidden;
+    }
+    .slide {
+        display: none;
+        text-align: center;
+        max-width: 90vw;
+        max-height: 90vh;
+        animation: fadeIn 1s ease;
+    }
+    .slide.active { display: block; }
+    @keyframes fadeIn {
+        from { opacity: 0; transform: scale(0.95); }
+        to { opacity: 1; transform: scale(1); }
+    }
+    .slide img {
+        max-width: 90vw;
+        max-height: 80vh;
+        border-radius: 12px;
+        box-shadow: 0 0 40px rgba(233, 69, 96, 0.3);
+    }
+    .slide .text {
+        font-size: 2rem;
+        margin-top: 1rem;
+        padding: 1rem 2rem;
+        background: rgba(0,0,0,0.7);
+        border-radius: 8px;
+        display: inline-block;
+    }
+    .placeholder {
+        font-size: 3rem;
+        color: #666;
+        text-align: center;
+        padding: 4rem 2rem;
+    }
+    .placeholder p { margin-top: 1rem; font-size: 1.2rem; color: #999; }
+    .nav-link {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: rgba(233, 69, 96, 0.8);
+        color: #fff;
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-size: 0.9rem;
+        z-index: 100;
+    }
+    .counter {
+        position: fixed;
+        bottom: 20px;
+        left: 20px;
+        background: rgba(0,0,0,0.5);
+        color: #aaa;
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        z-index: 100;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    {% if items %}
+        {% for item in items %}
+        <div class="slide{% if loop.first %} active{% endif %}" data-index="{{ loop.index0 }}">
+            {% if item.type == 'birthday' and item.image_path %}
+                <img src="{{ item.image_path }}" alt="{{ item.text }}">
+            {% elif item.type == 'announcement' %}
+                <div class="text">{{ item.text }}</div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="placeholder">
+            <div>🎉</div>
+            <p>Сегодня именинников нет</p>
+            <p style="margin-top:0.5rem;font-size:1rem;color:#666;">Но мы всегда рады поздравить вас!</p>
+        </div>
+    {% endif %}
+</div>
+
+<a class="nav-link" href="/admin">Админка</a>
+
+{% if items|length > 1 %}
+<div class="counter" id="counter">1 / {{ items|length }}</div>
+<script>
+    (function() {
+        const slides = document.querySelectorAll('.slide');
+        const counter = document.getElementById('counter');
+        let current = 0;
+        const total = slides.length;
+        const interval = {{ rotation_seconds }} * 1000;
+
+        function showSlide(index) {
+            slides.forEach(s => s.classList.remove('active'));
+            slides[index].classList.add('active');
+            if (counter) counter.textContent = (index + 1) + ' / ' + total;
+        }
+
+        setInterval(function() {
+            current = (current + 1) % total;
+            showSlide(current);
+        }, interval);
+    })();
+</script>
+{% endif %}
+{% endblock %}

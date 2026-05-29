@@ -1,0 +1,11 @@
+services:
+  corp-site:
+    build: .
+    ports:
+      - "8800:8000"
+    volumes:
+      - ./data:/app/data
+      - ./app/static/greetings:/app/app/static/greetings
+    env_file:
+      - .env
+    restart: unless-stopped
