@@ -36,6 +36,21 @@ router = APIRouter()
 
 templates = Jinja2Templates(directory="app/templates")
 
+
+def _dfmt(value) -> str:
+    """Преобразует дату/дату-время в ДД.ММ.ГГГГ."""
+    if not value:
+        return ""
+    if isinstance(value, (date, datetime)):
+        return value.strftime("%d.%m.%Y")
+    parts = str(value).split("-")
+    if len(parts) == 3:
+        return f"{parts[2]}.{parts[1]}.{parts[0]}"
+    return str(value)
+
+
+templates.env.filters["dfmt"] = _dfmt
+
 STATIC_URL = "/static"
 
 
@@ -208,13 +223,15 @@ async def add_employee_route(name: str = Form(...), birthday: str = Form(...), g
         gender=gender,
     )
     add_employee(employee_data.name, employee_data.birthday, employee_data.gender)
+    logger.info("Сотрудник добавлен через веб: %s", name)
     return RedirectResponse(url="/admin/employees", status_code=303)
 
 
 @router.post("/admin/employees/{employee_id}/delete")
 async def delete_employee_route(employee_id: int):
     """Удаляет сотрудника."""
-    delete_employee(employee_id)
+    ok = delete_employee(employee_id)
+    logger.info("Удаление сотрудника id=%d: %s", employee_id, "успех" if ok else "не найден")
     return RedirectResponse(url="/admin/employees", status_code=303)
 
 
@@ -230,18 +247,21 @@ async def add_announcement_route(
         date_from=date.fromisoformat(date_from) if date_from else None,
         date_to=date.fromisoformat(date_to) if date_to else None,
     )
+    logger.info("Объявление добавлено через веб: %s", text[:50])
     return RedirectResponse(url="/admin/announcements", status_code=303)
 
 
 @router.post("/admin/announcements/{announcement_id}/deactivate")
 async def deactivate_announcement_route(announcement_id: int):
     """Деактивирует объявление."""
-    deactivate_announcement(announcement_id)
+    ok = deactivate_announcement(announcement_id)
+    logger.info("Деактивация объявления id=%d: %s", announcement_id, "успех" if ok else "не найдено")
     return RedirectResponse(url="/admin/announcements", status_code=303)
 
 
 @router.post("/admin/announcements/{announcement_id}/delete")
 async def delete_announcement_route(announcement_id: int):
     """Удаляет объявление."""
-    delete_announcement(announcement_id)
+    ok = delete_announcement(announcement_id)
+    logger.info("Удаление объявления id=%d: %s", announcement_id, "успех" if ok else "не найдено")
     return RedirectResponse(url="/admin/announcements", status_code=303)

@@ -218,7 +218,7 @@
                 {% for emp in employees %}
                 <tr>
                     <td>{{ emp.name }}</td>
-                    <td>{{ emp.birthday }}</td>
+                    <td>{{ emp.birthday|dfmt }}</td>
                     <td>{{ 'Мужской' if emp.gender == 'male' else 'Женский' }}</td>
                     <td>
                         <form action="/admin/employees/{{ emp.id }}/delete" method="post" onsubmit="return confirm('Удалить сотрудника?')">
@@ -306,12 +306,12 @@
                     {{ ann.text }}
                     {% if ann.date_from or ann.date_to %}
                     <br><span class="date">
-                        даты: {{ ann.date_from or '...' }} — {{ ann.date_to or '...' }}
+                        даты: {{ ann.date_from|dfmt if ann.date_from else '...' }} — {{ ann.date_to|dfmt if ann.date_to else '...' }}
                     </span>
                     {% endif %}
                 </div>
                 <div>
-                    <span class="date">{{ ann.created_at[:10] }}</span>
+                    <span class="date">{{ ann.created_at[:10]|dfmt }}</span>
                     {% if not ann.is_active %}
                     <span class="inactive">(неактивно)</span>
                     {% endif %}

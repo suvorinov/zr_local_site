@@ -62,6 +62,13 @@ def _fetch_forecast() -> list[dict] | None:
         return None
 
     hourly = data.get("hourly", {})
+    if not hourly:
+        logger.warning("API погоды вернуло пустой ответ")
+        return None
+
+    logger.info("Прогноз погоды получен (%d часов)", len(hourly.get("time", [])))
+
+    hourly = data.get("hourly", {})
     times = hourly.get("time", [])
     temps = hourly.get("temperature_2m", [])
     precips = hourly.get("precipitation_probability", [])

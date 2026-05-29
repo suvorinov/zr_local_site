@@ -3,12 +3,15 @@
 Обеспечивает инициализацию и CRUD операции.
 """
 
+import logging
 import sqlite3
 from contextlib import contextmanager
 from datetime import date, datetime
 from pathlib import Path
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 def get_connection(db_path: Path | None = None) -> sqlite3.Connection:
@@ -172,7 +175,9 @@ def add_employee(name: str, birthday: date, gender: str) -> int:
             "INSERT INTO employees (name, birthday, gender) VALUES (?, ?, ?)",
             (name, birthday.isoformat(), gender),
         )
-        return cur.lastrowid
+        emp_id = cur.lastrowid
+        logger.info("Добавлен сотрудник id=%d: %s", emp_id, name)
+        return emp_id
 
 
 def delete_employee(employee_id: int) -> bool:
@@ -187,7 +192,12 @@ def delete_employee(employee_id: int) -> bool:
     with get_db() as conn:
         conn.execute("DELETE FROM greetings_log WHERE employee_id = ?", (employee_id,))
         cur = conn.execute("DELETE FROM employees WHERE id = ?", (employee_id,))
-        return cur.rowcount > 0
+        deleted = cur.rowcount > 0
+        if deleted:
+            logger.info("Удалён сотрудник id=%d", employee_id)
+        else:
+            logger.warning("Сотрудник id=%d не найден для удаления", employee_id)
+        return deleted
 
 
 def get_birthday_employees() -> list[dict]:
@@ -320,7 +330,9 @@ def add_announcement(text: str, date_from: date | None = None, date_to: date | N
                 date_to.isoformat() if date_to else None,
             ),
         )
-        return cur.lastrowid
+        ann_id = cur.lastrowid
+        logger.info("Добавлено объявление id=%d: %s", ann_id, text[:50])
+        return ann_id
 
 
 def deactivate_announcement(announcement_id: int) -> bool:
@@ -337,7 +349,12 @@ def deactivate_announcement(announcement_id: int) -> bool:
             "UPDATE announcements SET is_active = 0 WHERE id = ?",
             (announcement_id,),
         )
-        return cur.rowcount > 0
+        deactivated = cur.rowcount > 0
+        if deactivated:
+            logger.info("Деактивировано объявление id=%d", announcement_id)
+        else:
+            logger.warning("Объявление id=%d не найдено для деактивации", announcement_id)
+        return deactivated
 
 
 def delete_announcement(announcement_id: int) -> bool:
@@ -351,7 +368,12 @@ def delete_announcement(announcement_id: int) -> bool:
     """
     with get_db() as conn:
         cur = conn.execute("DELETE FROM announcements WHERE id = ?", (announcement_id,))
-        return cur.rowcount > 0
+        deleted = cur.rowcount > 0
+        if deleted:
+            logger.info("Удалено объявление id=%d", announcement_id)
+        else:
+            logger.warning("Объявление id=%d не найдено для удаления", announcement_id)
+        return deleted
 
 
 def log_greeting(employee_id: int, image_path: str) -> int:
