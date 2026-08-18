@@ -6,6 +6,7 @@
 - Поздравления именинников (автоматическая генерация)
 - Корпоративные объявления
 - Прогноз погоды на сегодня (Open-Meteo)
+- Бегущая строка с объявлениями внизу экрана
 
 ## Стек
 
@@ -14,12 +15,16 @@
 - **Jinja2** — шаблонизатор
 - **APScheduler** — планировщик задач
 - **Pillow** — генерация поздравительных изображений
+- **numpy** — оптимизация генерации изображений
+- **bleach** — санитизация Markdown (защита от XSS)
 - **Open-Meteo API** — прогноз погоды (без API-ключа)
 
 ## Быстрый старт
 
 ```bash
 pip install -r requirements.txt
+# Скопировать .env.example в .env и задать пароль администратора
+cp .env.example .env
 python -m app.main
 ```
 
@@ -40,9 +45,12 @@ docker compose up -d --build
 | `CORP_APP_TITLE` | `Корпоративный портал` | Заголовок |
 | `CORP_ORG_NAME` | `ООО "ЗАВОД РУСНИТ"` | Название организации |
 | `CORP_ROTATION_SECONDS` | `60` | Интервал смены слайдов (сек) |
+| `CORP_TICKER_SPEED` | `40` | Скорость бегущей строки (пикс/сек) |
 | `CORP_CHECK_TIME` | `06:00` | Время проверки дней рождений |
 | `CORP_WEATHER_LAT` | `54.6269` | Широта для прогноза |
 | `CORP_WEATHER_LON` | `39.6916` | Долгота для прогноза |
+| `CORP_ADMIN_USERNAME` | *(обязательно)* | Логин администратора |
+| `CORP_ADMIN_PASSWORD` | *(обязательно)* | Пароль (мин. 8 символов) |
 
 ## Структура
 
@@ -53,12 +61,15 @@ docker compose up -d --build
 │   ├── db.py            # SQLite CRUD
 │   ├── routes.py        # Маршруты FastAPI
 │   ├── models.py        # Pydantic модели
+│   ├── csrf.py          # CSRF-защита форм
 │   ├── scheduler.py     # Планировщик дней рождений
 │   ├── image_gen.py     # Генерация изображений
 │   ├── weather.py       # Прогноз погоды с кэшем
 │   ├── templates/       # Jinja2 шаблоны
 │   └── static/          # CSS, фоны, поздравления
 ├── data/                # SQLite БД, кэш погоды
+├── nginx.conf           # Конфигурация nginx для HTTPS
+├── HTTPS_SETUP.md       # Руководство по настройке HTTPS
 ├── Dockerfile
 ├── docker-compose.yml
 ├── requirements.txt
@@ -77,3 +88,10 @@ docker compose up -d --build
 ## Дата и время
 
 Даты в БД хранятся в формате ISO (YYYY-MM-DD), а отображаются в формате ДД.ММ.ГГГГ.
+
+## Безопасность
+
+- Авторизация администратора: Basic Auth (логин/пароль из `.env`)
+- CSRF-защита на всех POST-формах
+- Санитизация Markdown через `bleach` (защита от XSS)
+- Рекомендуется HTTPS через nginx (см. `HTTPS_SETUP.md`)

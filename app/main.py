@@ -4,7 +4,6 @@
 """
 
 import logging
-import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -36,7 +35,7 @@ async def lifespan(app: FastAPI):
     global scheduler
     logger.info("Запуск %s", settings.app_title)
     init_db()
-    threading.Thread(target=check_birthdays, daemon=True).start()
+    check_birthdays()
     scheduler = setup_scheduler()
     yield
     if scheduler:

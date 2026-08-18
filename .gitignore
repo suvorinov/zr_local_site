@@ -5,5 +5,7 @@ __pycache__/
 data/*.db
 data/*.db-wal
 data/*.db-shm
+data/weather_cache.json
 app/static/greetings/*
 !app/static/greetings/.gitkeep
+.csrf_secret

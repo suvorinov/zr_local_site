@@ -37,27 +37,42 @@ class Announcement(BaseModel):
 
     Attributes:
         id: Уникальный идентификатор.
+        title: Заголовок объявления.
         text: Текст объявления.
         created_at: Дата и время создания.
         is_active: Флаг активности.
         date_from: Дата начала показа (включительно).
         date_to: Дата окончания показа (включительно).
+        priority: Приоритет (выше = важнее).
+        category: Категория оформления (info/warning/success/danger).
+        is_pinned: Закреплено вверху.
+        image_path: Путь к изображению.
     """
 
     id: int | None = None
+    title: str = Field(default="", description="Заголовок объявления")
     text: str = Field(..., min_length=1, description="Текст объявления")
     created_at: datetime | None = None
     is_active: bool = True
     date_from: date | None = Field(None, description="Дата начала показа")
     date_to: date | None = Field(None, description="Дата окончания показа")
+    priority: int = Field(default=0, description="Приоритет (выше = важнее)")
+    category: str = Field(default="info", pattern=r"^(info|warning|success|danger)$", description="Категория оформления")
+    is_pinned: bool = Field(default=False, description="Закреплено вверху")
+    image_path: str | None = Field(None, description="Путь к изображению")
 
 
 class AnnouncementCreate(BaseModel):
     """Модель для создания объявления."""
 
+    title: str = Field(default="", description="Заголовок объявления")
     text: str = Field(..., min_length=1, description="Текст объявления")
     date_from: date | None = Field(None, description="Дата начала показа")
     date_to: date | None = Field(None, description="Дата окончания показа")
+    priority: int = Field(default=0, description="Приоритет")
+    category: str = Field(default="info", description="Категория оформления")
+    is_pinned: bool = Field(default=False, description="Закреплено")
+    image_path: str | None = Field(None, description="Путь к изображению")
 
 
 class Greeting(BaseModel):

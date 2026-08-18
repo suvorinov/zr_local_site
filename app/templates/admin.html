@@ -187,6 +187,7 @@
     <div class="card">
         <h2>Добавить сотрудника</h2>
         <form action="/admin/employees/add" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <div class="field">
                 <label>ФИО</label>
                 <input type="text" name="name" required placeholder="Иванов Иван Иванович">
@@ -222,6 +223,7 @@
                     <td>{{ 'Мужской' if emp.gender == 'male' else 'Женский' }}</td>
                     <td>
                         <form action="/admin/employees/{{ emp.id }}/delete" method="post" onsubmit="return confirm('Удалить сотрудника?')">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                             <button class="btn-small btn-danger" type="submit">Удалить</button>
                         </form>
                     </td>
@@ -277,24 +279,114 @@
         </form>
     </div>
 
+    {% if edit_announcement %}
+    <div class="card">
+        <h2>Редактировать объявление #{{ edit_announcement.id }}</h2>
+        <form action="/admin/announcements/{{ edit_announcement.id }}/edit" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="form-row">
+                <div class="field" style="flex:1;">
+                    <label>Заголовок</label>
+                    <input type="text" name="title" value="{{ edit_announcement.title or '' }}" placeholder="Заголовок объявления">
+                </div>
+            </div>
+            <div class="form-row" style="margin-top:0.5rem;">
+                <div style="flex:1;display:flex;flex-direction:column;">
+                    <label>Текст объявления (поддерживается Markdown)</label>
+                    <textarea name="text" required placeholder="Текст корпоративного объявления...">{{ edit_announcement.text }}</textarea>
+                </div>
+            </div>
+            <div class="form-row" style="margin-top:0.5rem;">
+                <div class="field">
+                    <label>Показывать с</label>
+                    <input type="date" name="date_from" value="{{ edit_announcement.date_from or '' }}">
+                </div>
+                <div class="field">
+                    <label>Показывать по</label>
+                    <input type="date" name="date_to" value="{{ edit_announcement.date_to or '' }}">
+                </div>
+                <div class="field">
+                    <label>Приоритет</label>
+                    <input type="number" name="priority" value="{{ edit_announcement.priority or 0 }}" min="0" max="999">
+                </div>
+                <div class="field">
+                    <label>Категория</label>
+                    <select name="category">
+                        <option value="info" {% if edit_announcement.category == 'info' %}selected{% endif %}>Info</option>
+                        <option value="warning" {% if edit_announcement.category == 'warning' %}selected{% endif %}>Warning</option>
+                        <option value="success" {% if edit_announcement.category == 'success' %}selected{% endif %}>Success</option>
+                        <option value="danger" {% if edit_announcement.category == 'danger' %}selected{% endif %}>Danger</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-row" style="margin-top:0.5rem;">
+                <div class="field">
+                    <label>URL изображения</label>
+                    <input type="text" name="image_path" value="{{ edit_announcement.image_path or '' }}" placeholder="/static/greetings/...">
+                </div>
+                <div class="field" style="display:flex;flex-direction:row;align-items:center;gap:0.5rem;">
+                    <input type="checkbox" name="is_pinned" id="edit_is_pinned" value="true" {% if edit_announcement.is_pinned %}checked{% endif %}>
+                    <label for="edit_is_pinned" style="margin:0;">Закреплено</label>
+                </div>
+                <button class="btn" type="submit">Сохранить</button>
+                <a href="/admin/announcements" class="btn-clear" style="display:inline-flex;align-items:center;">Отмена</a>
+            </div>
+        </form>
+    </div>
+    {% else %}
     <div class="card">
         <h2>Добавить объявление</h2>
         <form action="/admin/announcements/add" method="post">
-            <div style="flex:1;display:flex;flex-direction:column;">
-                <label>Текст объявления</label>
-                <textarea name="text" required placeholder="Текст корпоративного объявления..."></textarea>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="form-row">
+                <div class="field" style="flex:1;">
+                    <label>Заголовок</label>
+                    <input type="text" name="title" placeholder="Заголовок объявления">
+                </div>
             </div>
-            <div class="field">
-                <label>Показывать с</label>
-                <input type="date" name="date_from" placeholder="Не обязательно">
+            <div class="form-row" style="margin-top:0.5rem;">
+                <div style="flex:1;display:flex;flex-direction:column;">
+                    <label>Текст объявления (поддерживается Markdown)</label>
+                    <textarea name="text" required placeholder="Текст корпоративного объявления..."></textarea>
+                </div>
             </div>
-            <div class="field">
-                <label>Показывать по</label>
-                <input type="date" name="date_to" placeholder="Не обязательно">
+            <div class="form-row" style="margin-top:0.5rem;">
+                <div class="field">
+                    <label>Показывать с</label>
+                    <input type="date" name="date_from">
+                </div>
+                <div class="field">
+                    <label>Показывать по</label>
+                    <input type="date" name="date_to">
+                </div>
+                <div class="field">
+                    <label>Приоритет</label>
+                    <input type="number" name="priority" value="0" min="0" max="999">
+                </div>
+                <div class="field">
+                    <label>Категория</label>
+                    <select name="category">
+                        <option value="info">Info</option>
+                        <option value="warning">Warning</option>
+                        <option value="success">Success</option>
+                        <option value="danger">Danger</option>
+                    </select>
+                </div>
             </div>
-            <button class="btn" type="submit">Опубликовать</button>
+            <div class="form-row" style="margin-top:0.5rem;">
+                <div class="field">
+                    <label>URL изображения</label>
+                    <input type="text" name="image_path" placeholder="/static/greetings/...">
+                </div>
+                <div class="field" style="display:flex;flex-direction:row;align-items:center;gap:0.5rem;">
+                    <input type="checkbox" name="is_pinned" id="add_is_pinned" value="true">
+                    <label for="add_is_pinned" style="margin:0;">Закреплено</label>
+                </div>
+                <button class="btn" type="submit">Опубликовать</button>
+            </div>
         </form>
     </div>
+    {% endif %}
 
     <div class="card">
         <h2>Объявления</h2>
@@ -303,24 +395,37 @@
             {% for ann in announcements %}
             <div class="ann-item">
                 <div class="text">
+                    {% if ann.title %}<strong>{{ ann.title }}</strong><br>{% endif %}
                     {{ ann.text }}
+                    <br>
+                    <span class="date">
+                        {% if ann.is_pinned %}<span style="color:#e94560;">📌</span> {% endif %}
+                        приоритет: {{ ann.priority or 0 }},
+                        категория: {{ ann.category or 'info' }},
+                        создано: {{ ann.created_at[:10]|dfmt }}
+                    </span>
                     {% if ann.date_from or ann.date_to %}
                     <br><span class="date">
                         даты: {{ ann.date_from|dfmt if ann.date_from else '...' }} — {{ ann.date_to|dfmt if ann.date_to else '...' }}
                     </span>
                     {% endif %}
+                    {% if ann.image_path %}
+                    <br><span class="date">изображение: {{ ann.image_path }}</span>
+                    {% endif %}
                 </div>
                 <div>
-                    <span class="date">{{ ann.created_at[:10]|dfmt }}</span>
                     {% if not ann.is_active %}
                     <span class="inactive">(неактивно)</span>
                     {% endif %}
                     {% if ann.is_active %}
                     <form action="/admin/announcements/{{ ann.id }}/deactivate" method="post" style="display:inline;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                         <button class="btn-small" type="submit">Деактивировать</button>
                     </form>
                     {% endif %}
+                    <a href="/admin/announcements/{{ ann.id }}/edit" class="btn-small" style="display:inline-block;text-decoration:none;background:#444;color:#eee;padding:0.3rem 0.6rem;border-radius:3px;font-size:0.8rem;">Редактировать</a>
                     <form action="/admin/announcements/{{ ann.id }}/delete" method="post" style="display:inline;" onsubmit="return confirm('Удалить объявление?')">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                         <button class="btn-small btn-danger" type="submit">Удалить</button>
                     </form>
                 </div>

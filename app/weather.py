@@ -67,8 +67,6 @@ def _fetch_forecast() -> list[dict] | None:
         return None
 
     logger.info("Прогноз погоды получен (%d часов)", len(hourly.get("time", [])))
-
-    hourly = data.get("hourly", {})
     times = hourly.get("time", [])
     temps = hourly.get("temperature_2m", [])
     precips = hourly.get("precipitation_probability", [])

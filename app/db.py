@@ -50,6 +50,23 @@ def get_db():
         conn.close()
 
 
+def _run_migration(conn: sqlite3.Connection):
+    """Добавляет новые колонки в существующие таблицы."""
+    migrations = [
+        "ALTER TABLE announcements ADD COLUMN title TEXT DEFAULT ''",
+        "ALTER TABLE announcements ADD COLUMN priority INTEGER DEFAULT 0",
+        "ALTER TABLE announcements ADD COLUMN category TEXT DEFAULT 'info'",
+        "ALTER TABLE announcements ADD COLUMN is_pinned INTEGER DEFAULT 0",
+        "ALTER TABLE announcements ADD COLUMN image_path TEXT DEFAULT NULL",
+    ]
+    for sql in migrations:
+        try:
+            conn.execute(sql)
+            logger.info("Миграция: %s", sql)
+        except sqlite3.OperationalError:
+            pass
+
+
 def init_db():
     """Инициализирует таблицы в базе данных."""
     with get_db() as conn:
@@ -63,11 +80,16 @@ def init_db():
 
             CREATE TABLE IF NOT EXISTS announcements (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT DEFAULT '',
                 text TEXT NOT NULL,
                 created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
                 is_active INTEGER NOT NULL DEFAULT 1,
                 date_from TEXT,
-                date_to TEXT
+                date_to TEXT,
+                priority INTEGER DEFAULT 0,
+                category TEXT DEFAULT 'info',
+                is_pinned INTEGER DEFAULT 0,
+                image_path TEXT DEFAULT NULL
             );
 
             CREATE TABLE IF NOT EXISTS greetings_log (
@@ -78,6 +100,7 @@ def init_db():
                 FOREIGN KEY (employee_id) REFERENCES employees(id)
             );
         """)
+        _run_migration(conn)
 
 
 def get_employees() -> list[dict]:
@@ -89,6 +112,18 @@ def get_employees() -> list[dict]:
     with get_db() as conn:
         rows = conn.execute("SELECT * FROM employees ORDER BY name").fetchall()
         return [dict(r) for r in rows]
+
+
+def _build_employee_where(name: str = "", birthday: str = ""):
+    where = " WHERE 1=1"
+    params: list[str] = []
+    if name:
+        where += " AND name LIKE ?"
+        params.append(f"%{name}%")
+    if birthday:
+        where += " AND birthday = ?"
+        params.append(birthday)
+    return where, params
 
 
 def search_employees(
@@ -106,15 +141,8 @@ def search_employees(
     Returns:
         Список подходящих сотрудников.
     """
-    query = "SELECT * FROM employees WHERE 1=1"
-    params: list[str] = []
-    if name:
-        query += " AND name LIKE ?"
-        params.append(f"%{name}%")
-    if birthday:
-        query += " AND birthday = ?"
-        params.append(birthday)
-    query += " ORDER BY name"
+    where, params = _build_employee_where(name, birthday)
+    query = "SELECT * FROM employees" + where + " ORDER BY name"
     if limit:
         query += " LIMIT ? OFFSET ?"
         params.extend([str(limit), str(offset)])
@@ -133,16 +161,9 @@ def count_employees(name: str = "", birthday: str = "") -> int:
     Returns:
         Количество записей.
     """
-    query = "SELECT COUNT(*) FROM employees WHERE 1=1"
-    params: list[str] = []
-    if name:
-        query += " AND name LIKE ?"
-        params.append(f"%{name}%")
-    if birthday:
-        query += " AND birthday = ?"
-        params.append(birthday)
+    where, params = _build_employee_where(name, birthday)
     with get_db() as conn:
-        return conn.execute(query, params).fetchone()[0]
+        return conn.execute("SELECT COUNT(*) FROM employees" + where, params).fetchone()[0]
 
 
 def get_employee(employee_id: int) -> dict | None:
@@ -215,6 +236,34 @@ def get_birthday_employees() -> list[dict]:
         return [dict(r) for r in rows]
 
 
+def _build_announcement_where(
+    active_only: bool = True,
+    search_date_from: str = "",
+    search_date_to: str = "",
+):
+    today = date.today().isoformat()
+    params: list[str] = []
+    where_clauses: list[str] = []
+
+    if active_only:
+        where_clauses.append("is_active = 1")
+        where_clauses.append("(date_from IS NULL OR date_from <= ?)")
+        params.append(today)
+        where_clauses.append("(date_to IS NULL OR date_to >= ?)")
+        params.append(today)
+
+    if search_date_from:
+        where_clauses.append("date_from IS NOT NULL AND date_from >= ?")
+        params.append(search_date_from)
+
+    if search_date_to:
+        where_clauses.append("date_to IS NOT NULL AND date_to <= ?")
+        params.append(search_date_to)
+
+    where = " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+    return where, params
+
+
 def get_announcements(
     active_only: bool = True,
     limit: int = 0, offset: int = 0,
@@ -236,29 +285,8 @@ def get_announcements(
     Returns:
         Список объявлений.
     """
-    today = date.today().isoformat()
-    params: list[str] = []
-    where_clauses: list[str] = []
-
-    if active_only:
-        where_clauses.append("is_active = 1")
-        where_clauses.append("(date_from IS NULL OR date_from <= ?)")
-        params.append(today)
-        where_clauses.append("(date_to IS NULL OR date_to >= ?)")
-        params.append(today)
-
-    if search_date_from:
-        where_clauses.append("date_from IS NOT NULL AND date_from >= ?")
-        params.append(search_date_from)
-
-    if search_date_to:
-        where_clauses.append("date_to IS NOT NULL AND date_to <= ?")
-        params.append(search_date_to)
-
-    query = "SELECT * FROM announcements"
-    if where_clauses:
-        query += " WHERE " + " AND ".join(where_clauses)
-    query += " ORDER BY created_at DESC"
+    where, params = _build_announcement_where(active_only, search_date_from, search_date_to)
+    query = "SELECT * FROM announcements" + where + " ORDER BY is_pinned DESC, priority DESC, created_at DESC"
     if limit:
         query += " LIMIT ? OFFSET ?"
         params.extend([str(limit), str(offset)])
@@ -282,57 +310,141 @@ def count_announcements(
     Returns:
         Количество записей.
     """
-    today = date.today().isoformat()
-    params: list[str] = []
-    where_clauses: list[str] = []
-
-    if active_only:
-        where_clauses.append("is_active = 1")
-        where_clauses.append("(date_from IS NULL OR date_from <= ?)")
-        params.append(today)
-        where_clauses.append("(date_to IS NULL OR date_to >= ?)")
-        params.append(today)
-
-    if search_date_from:
-        where_clauses.append("date_from IS NOT NULL AND date_from >= ?")
-        params.append(search_date_from)
-
-    if search_date_to:
-        where_clauses.append("date_to IS NOT NULL AND date_to <= ?")
-        params.append(search_date_to)
-
-    query = "SELECT COUNT(*) FROM announcements"
-    if where_clauses:
-        query += " WHERE " + " AND ".join(where_clauses)
-
+    where, params = _build_announcement_where(active_only, search_date_from, search_date_to)
     with get_db() as conn:
-        return conn.execute(query, params).fetchone()[0]
+        return conn.execute("SELECT COUNT(*) FROM announcements" + where, params).fetchone()[0]
 
 
-def add_announcement(text: str, date_from: date | None = None, date_to: date | None = None) -> int:
+def get_announcement(announcement_id: int) -> dict | None:
+    """Возвращает объявление по ID.
+
+    Args:
+        announcement_id: Идентификатор объявления.
+
+    Returns:
+        Данные объявления или None.
+    """
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM announcements WHERE id = ?", (announcement_id,)).fetchone()
+        return dict(row) if row else None
+
+
+def add_announcement(
+    text: str,
+    title: str = "",
+    date_from: date | None = None,
+    date_to: date | None = None,
+    priority: int = 0,
+    category: str = "info",
+    is_pinned: bool = False,
+    image_path: str | None = None,
+) -> int:
     """Добавляет новое объявление.
 
     Args:
         text: Текст объявления.
+        title: Заголовок объявления.
         date_from: Дата начала показа.
         date_to: Дата окончания показа.
+        priority: Приоритет.
+        category: Категория оформления.
+        is_pinned: Закреплено.
+        image_path: Путь к изображению.
 
     Returns:
         ID созданной записи.
     """
     with get_db() as conn:
         cur = conn.execute(
-            "INSERT INTO announcements (text, created_at, date_from, date_to) VALUES (?, ?, ?, ?)",
+            """INSERT INTO announcements (title, text, created_at, date_from, date_to, priority, category, is_pinned, image_path)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
+                title,
                 text,
                 datetime.now().isoformat(),
                 date_from.isoformat() if date_from else None,
                 date_to.isoformat() if date_to else None,
+                priority,
+                category,
+                1 if is_pinned else 0,
+                image_path,
             ),
         )
         ann_id = cur.lastrowid
-        logger.info("Добавлено объявление id=%d: %s", ann_id, text[:50])
+        logger.info("Добавлено объявление id=%d: %s", ann_id, title or text[:50])
         return ann_id
+
+
+def update_announcement(
+    announcement_id: int,
+    title: str | None = None,
+    text: str | None = None,
+    date_from: date | None | str = None,
+    date_to: date | None | str = None,
+    priority: int | None = None,
+    category: str | None = None,
+    is_pinned: bool | None = None,
+    image_path: str | None | str = None,
+) -> bool:
+    """Обновляет объявление по ID.
+
+    Args:
+        announcement_id: Идентификатор объявления.
+        title: Новый заголовок.
+        text: Новый текст.
+        date_from: Новая дата начала (None = сбросить, omit = не менять).
+        date_to: Новая дата окончания.
+        priority: Новый приоритет.
+        category: Новая категория.
+        is_pinned: Новый флаг закрепления.
+        image_path: Новый путь к изображению.
+
+    Returns:
+        True если запись обновлена, иначе False.
+    """
+    fields: list[str] = []
+    params: list = []
+
+    if title is not None:
+        fields.append("title = ?")
+        params.append(title)
+    if text is not None:
+        fields.append("text = ?")
+        params.append(text)
+    if date_from is not None:
+        fields.append("date_from = ?")
+        params.append(date_from if isinstance(date_from, str) else date_from.isoformat() if date_from else None)
+    if date_to is not None:
+        fields.append("date_to = ?")
+        params.append(date_to if isinstance(date_to, str) else date_to.isoformat() if date_to else None)
+    if priority is not None:
+        fields.append("priority = ?")
+        params.append(priority)
+    if category is not None:
+        fields.append("category = ?")
+        params.append(category)
+    if is_pinned is not None:
+        fields.append("is_pinned = ?")
+        params.append(1 if is_pinned else 0)
+    if image_path is not None:
+        fields.append("image_path = ?")
+        params.append(image_path if image_path else None)
+
+    if not fields:
+        return False
+
+    params.append(announcement_id)
+    with get_db() as conn:
+        cur = conn.execute(
+            "UPDATE announcements SET " + ", ".join(fields) + " WHERE id = ?",
+            params,
+        )
+        updated = cur.rowcount > 0
+        if updated:
+            logger.info("Обновлено объявление id=%d", announcement_id)
+        else:
+            logger.warning("Объявление id=%d не найдено для обновления", announcement_id)
+        return updated
 
 
 def deactivate_announcement(announcement_id: int) -> bool:
@@ -355,6 +467,24 @@ def deactivate_announcement(announcement_id: int) -> bool:
         else:
             logger.warning("Объявление id=%d не найдено для деактивации", announcement_id)
         return deactivated
+
+
+def auto_deactivate_expired() -> int:
+    """Деактивирует объявления с истекшей date_to.
+
+    Returns:
+        Количество деактивированных записей.
+    """
+    today = date.today().isoformat()
+    with get_db() as conn:
+        cur = conn.execute(
+            "UPDATE announcements SET is_active = 0 WHERE is_active = 1 AND date_to IS NOT NULL AND date_to < ?",
+            (today,),
+        )
+        count = cur.rowcount
+        if count:
+            logger.info("Автоматически деактивировано %d просроченных объявлений", count)
+        return count
 
 
 def delete_announcement(announcement_id: int) -> bool:

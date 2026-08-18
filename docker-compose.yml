@@ -2,7 +2,7 @@ services:
   corp-site:
     build: .
     ports:
-      - "8800:8000"
+      - "8800:8800"
     volumes:
       - ./data:/app/data
       - ./app/static/greetings:/app/app/static/greetings
