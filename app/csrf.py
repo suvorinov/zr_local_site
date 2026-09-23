@@ -93,6 +93,20 @@ def validate_csrf_token(token: str | None, session_id: str = "default") -> bool:
     return True
 
 
+def get_session_id(request: Request) -> str:
+    """Вычисляет session ID по IP + User-Agent для привязки CSRF.
+
+    Args:
+        request: Объект запроса.
+
+    Returns:
+        Строка-идентификатор сессии (первые 16 символов SHA-256).
+    """
+    client_ip = request.client.host if request.client else "unknown"
+    ua = request.headers.get("user-agent", "")
+    return hashlib.sha256(f"{client_ip}:{ua}".encode()).hexdigest()[:16]
+
+
 def require_csrf(request: Request, token: str | None) -> None:
     """Проверяет CSRF-токен и выбрасывает 403 если невалиден.
 
@@ -103,11 +117,7 @@ def require_csrf(request: Request, token: str | None) -> None:
     Raises:
         HTTPException: 403 если токен невалиден.
     """
-    # Определяем session_id по IP + User-Agent для простоты
-    client_ip = request.client.host if request.client else "unknown"
-    ua = request.headers.get("user-agent", "")
-    session_id = hashlib.sha256(f"{client_ip}:{ua}".encode()).hexdigest()[:16]
-
+    session_id = get_session_id(request)
     if not validate_csrf_token(token, session_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

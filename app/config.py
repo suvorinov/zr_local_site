@@ -19,6 +19,7 @@ class Settings(BaseSettings):
         background_dir: Путь к каталогу с фоновыми изображениями.
         greeting_dir: Путь к каталогу для сгенерированных поздравлений.
         rotation_seconds: Интервал ротации поздравлений в секундах.
+        empty_rotation_seconds: Интервал ротации инфо-блоков, когда именинников нет.
         check_time: Время проверки дней рождений (ЧЧ:ММ).
         ticker_speed: Скорость бегущей строки (пикселей в секунду).
         admin_username: Логин администратора (обязательно задать в .env).
@@ -30,7 +31,8 @@ class Settings(BaseSettings):
     org_name: str = 'ООО "ЗАВОД РУСНИТ"'
     background_dir: Path = Path("app") / "static" / "backgrounds"
     greeting_dir: Path = Path("app") / "static" / "greetings"
-    rotation_seconds: int = 60
+    rotation_seconds: int = 30
+    empty_rotation_seconds: int = 20
     check_time: str = "06:00"
     weather_lat: float = 54.6269
     weather_lon: float = 39.6916

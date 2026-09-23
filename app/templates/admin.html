@@ -289,10 +289,14 @@
                     <label>Заголовок</label>
                     <input type="text" name="title" value="{{ edit_announcement.title or '' }}" placeholder="Заголовок объявления">
                 </div>
+                <div class="field" style="width:120px;">
+                    <label>Приоритет</label>
+                    <input type="number" name="priority" value="{{ edit_announcement.priority or 0 }}" min="0" max="999">
+                </div>
             </div>
             <div class="form-row" style="margin-top:0.5rem;">
                 <div style="flex:1;display:flex;flex-direction:column;">
-                    <label>Текст объявления (поддерживается Markdown)</label>
+                    <label>Текст объявления</label>
                     <textarea name="text" required placeholder="Текст корпоративного объявления...">{{ edit_announcement.text }}</textarea>
                 </div>
             </div>
@@ -305,30 +309,7 @@
                     <label>Показывать по</label>
                     <input type="date" name="date_to" value="{{ edit_announcement.date_to or '' }}">
                 </div>
-                <div class="field">
-                    <label>Приоритет</label>
-                    <input type="number" name="priority" value="{{ edit_announcement.priority or 0 }}" min="0" max="999">
-                </div>
-                <div class="field">
-                    <label>Категория</label>
-                    <select name="category">
-                        <option value="info" {% if edit_announcement.category == 'info' %}selected{% endif %}>Info</option>
-                        <option value="warning" {% if edit_announcement.category == 'warning' %}selected{% endif %}>Warning</option>
-                        <option value="success" {% if edit_announcement.category == 'success' %}selected{% endif %}>Success</option>
-                        <option value="danger" {% if edit_announcement.category == 'danger' %}selected{% endif %}>Danger</option>
-                    </select>
-                </div>
-            </div>
-            <div class="form-row" style="margin-top:0.5rem;">
-                <div class="field">
-                    <label>URL изображения</label>
-                    <input type="text" name="image_path" value="{{ edit_announcement.image_path or '' }}" placeholder="/static/greetings/...">
-                </div>
-                <div class="field" style="display:flex;flex-direction:row;align-items:center;gap:0.5rem;">
-                    <input type="checkbox" name="is_pinned" id="edit_is_pinned" value="true" {% if edit_announcement.is_pinned %}checked{% endif %}>
-                    <label for="edit_is_pinned" style="margin:0;">Закреплено</label>
-                </div>
-                <button class="btn" type="submit">Сохранить</button>
+                <button class="btn" type="submit" style="margin-left:auto;align-self:flex-end;">Сохранить</button>
                 <a href="/admin/announcements" class="btn-clear" style="display:inline-flex;align-items:center;">Отмена</a>
             </div>
         </form>
@@ -343,10 +324,14 @@
                     <label>Заголовок</label>
                     <input type="text" name="title" placeholder="Заголовок объявления">
                 </div>
+                <div class="field" style="width:120px;">
+                    <label>Приоритет</label>
+                    <input type="number" name="priority" value="0" min="0" max="999">
+                </div>
             </div>
             <div class="form-row" style="margin-top:0.5rem;">
                 <div style="flex:1;display:flex;flex-direction:column;">
-                    <label>Текст объявления (поддерживается Markdown)</label>
+                    <label>Текст объявления</label>
                     <textarea name="text" required placeholder="Текст корпоративного объявления..."></textarea>
                 </div>
             </div>
@@ -359,30 +344,7 @@
                     <label>Показывать по</label>
                     <input type="date" name="date_to">
                 </div>
-                <div class="field">
-                    <label>Приоритет</label>
-                    <input type="number" name="priority" value="0" min="0" max="999">
-                </div>
-                <div class="field">
-                    <label>Категория</label>
-                    <select name="category">
-                        <option value="info">Info</option>
-                        <option value="warning">Warning</option>
-                        <option value="success">Success</option>
-                        <option value="danger">Danger</option>
-                    </select>
-                </div>
-            </div>
-            <div class="form-row" style="margin-top:0.5rem;">
-                <div class="field">
-                    <label>URL изображения</label>
-                    <input type="text" name="image_path" placeholder="/static/greetings/...">
-                </div>
-                <div class="field" style="display:flex;flex-direction:row;align-items:center;gap:0.5rem;">
-                    <input type="checkbox" name="is_pinned" id="add_is_pinned" value="true">
-                    <label for="add_is_pinned" style="margin:0;">Закреплено</label>
-                </div>
-                <button class="btn" type="submit">Опубликовать</button>
+                <button class="btn" type="submit" style="margin-left:auto;align-self:flex-end;">Опубликовать</button>
             </div>
         </form>
     </div>

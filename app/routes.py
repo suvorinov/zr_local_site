@@ -3,11 +3,11 @@
 Определяет эндпоинты для главной страницы и управления контентом.
 """
 
-import hashlib
 import json
 import logging
+import random
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import bleach
@@ -19,7 +19,7 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
 
 from app.config import settings
-from app.csrf import generate_csrf_token, require_csrf
+from app.csrf import generate_csrf_token, get_session_id, require_csrf
 from app.db import (
     add_announcement,
     add_employee,
@@ -60,13 +60,6 @@ _BLEACH_ALLOWED_ATTRS = {
     "a": ["href", "title", "target"],
     "img": ["src", "alt", "title"],
 }
-
-
-def _get_session_id(request: Request) -> str:
-    """Вычисляет session ID по IP + User-Agent для привязки CSRF."""
-    client_ip = request.client.host if request.client else "unknown"
-    ua = request.headers.get("user-agent", "")
-    return hashlib.sha256(f"{client_ip}:{ua}".encode()).hexdigest()[:16]
 
 
 def verify_admin(credentials: HTTPBasicCredentials | None = Depends(security)):
@@ -152,6 +145,45 @@ def _get_birthday_items() -> list[dict]:
     return items
 
 
+_HOLIDAYS_CACHE: list[dict] | None = None
+
+
+def _get_holiday_items(today: date | None = None) -> list[dict]:
+    """Собирает слайд-карточки праздников на текущий день.
+
+    Праздники берутся из holidays.json и показываются CSS-карточкой
+    в общей ротации с именинниками.
+
+    Args:
+        today: Дата проверки (по умолчанию сегодняшняя).
+
+    Returns:
+        Список элементов типа holiday, если на дату есть праздники.
+    """
+    global _HOLIDAYS_CACHE
+    if _HOLIDAYS_CACHE is None:
+        holidays_file = Path(__file__).resolve().parent / "holidays.json"
+        try:
+            raw = json.loads(holidays_file.read_text(encoding="utf-8"))
+            _HOLIDAYS_CACHE = raw if isinstance(raw, list) else []
+        except (OSError, json.JSONDecodeError):
+            logger.error("Не удалось загрузить %s", holidays_file)
+            _HOLIDAYS_CACHE = []
+
+    today = today or date.today()
+    md = f"{today.month:02d}-{today.day:02d}"
+    return [
+        {
+            "type": "holiday",
+            "name": h.get("name", ""),
+            "greeting": h.get("greeting", "Праздник!"),
+            "emoji": h.get("emoji", "\U0001f389"),
+        }
+        for h in _HOLIDAYS_CACHE
+        if h.get("date") == md
+    ]
+
+
 def _get_ticker_items() -> list[str]:
     """Собирает тексты активных объявлений для бегущей строки.
 
@@ -166,6 +198,100 @@ def _get_ticker_items() -> list[str]:
     ]
 
 
+_QUOTES_CACHE: list[dict] | None = None
+
+
+def _get_quotes() -> list[dict]:
+    """Загружает список цитат из quotes.json (с кэшем).
+
+    Дубликаты текстов отбрасываются — каждая цитата показывается
+    ровно один раз за цикл.
+
+    Returns:
+        Список уникальных словарей {text, author}. При ошибке — резервная цитата.
+    """
+    global _QUOTES_CACHE
+    if _QUOTES_CACHE is None:
+        quotes_file = Path(__file__).resolve().parent / "quotes.json"
+        try:
+            raw = json.loads(quotes_file.read_text(encoding="utf-8"))
+            if not isinstance(raw, list) or not raw:
+                raise ValueError("quotes.json пуст или не является списком")
+            seen: set[str] = set()
+            unique: list[dict] = []
+            for item in raw:
+                text = str(item.get("text", "")).strip()
+                if not text or text in seen:
+                    continue
+                seen.add(text)
+                unique.append({"text": text, "author": str(item.get("author", "")).strip()})
+            if not unique:
+                raise ValueError("quotes.json не содержит цитат")
+            _QUOTES_CACHE = unique
+        except (OSError, json.JSONDecodeError, ValueError):
+            logger.error("Не удалось загрузить %s, использую резервную цитату", quotes_file)
+            _QUOTES_CACHE = [{
+                "text": "Работа избавляет нас от трёх великих зол: скуки, порока и нужды.",
+                "author": "Вольтер",
+            }]
+    return _QUOTES_CACHE
+
+
+def _plural(n: int, forms: tuple[str, str, str]) -> str:
+    """Склонение существительных: 1 день / 2 дня / 5 дней."""
+    n10, n100 = n % 10, n % 100
+    if n10 == 1 and n100 != 11:
+        return forms[0]
+    if 2 <= n10 <= 4 and not 12 <= n100 <= 14:
+        return forms[1]
+    return forms[2]
+
+
+def _short_name(full: str) -> str:
+    """Сокращает ФИО до «Фамилия И.О.»: Суворинов Олег Викторович -> Суворинов О.В."""
+    parts = full.split()
+    if not parts:
+        return full
+    surname = parts[0]
+    initials = "".join(p[0] + "." for p in parts[1:] if p)
+    return f"{surname} {initials}".strip() if initials else surname
+
+
+def _get_upcoming_birthdays(horizon: int = 3) -> list[dict]:
+    """Группирует ближайшие дни рождения по дням.
+
+    Учитываются только дни строго после сегодняшнего (сегодняшние
+    показываются карточками-слайдами). Каждый сотрудник попадает
+    в первую подходящую дату его дня рождения.
+
+    Args:
+        horizon: Сколько ближайших дней учитывать (по умолчанию 3).
+
+    Returns:
+        Список словарей {days, label, names} только для дней,
+        где есть именинники, отсортированный по близости даты.
+    """
+    today = date.today()
+    buckets: dict[int, list[str]] = {}
+    for emp in get_employees():
+        try:
+            bd = date.fromisoformat(emp["birthday"])
+        except (ValueError, TypeError):
+            continue
+        for delta in range(1, horizon + 1):
+            target = today + timedelta(days=delta)
+            if (bd.month, bd.day) == (target.month, target.day):
+                buckets.setdefault(delta, []).append(_short_name(emp["name"]))
+                break
+
+    labels = {1: "Завтра", 2: "Послезавтра"}
+    result: list[dict] = []
+    for delta in sorted(buckets):
+        label = labels.get(delta) or f"Через {delta} {_plural(delta, ('день', 'дня', 'дней'))}"
+        result.append({"days": delta, "label": label, "names": buckets[delta]})
+    return result
+
+
 @router.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     """Главная страница-информер.
@@ -173,15 +299,20 @@ async def index(request: Request):
     Показывает informer.html с датой, временем, погодой,
     карточками именинников и бегущей строкой объявлений внизу.
     """
-    items = _get_birthday_items()
+    items = _get_birthday_items() + _get_holiday_items()
     ticker_items = _get_ticker_items()
 
     now = datetime.now()
     days_ru = ["понедельник","вторник","среда","четверг",
                 "пятница","суббота","воскресенье"]
+    days_ru_short = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"]
     months_ru = ["января","февраля","марта","апреля","мая",
                   "июня","июля","августа","сентября",
                   "октября","ноября","декабря"]
+
+    next_birthdays = _get_upcoming_birthdays(horizon=3)
+    quotes = _get_quotes()
+    quote = random.choice(quotes)
 
     ctx: dict = {
         "title": settings.app_title,
@@ -190,12 +321,21 @@ async def index(request: Request):
             f"{days_ru[now.weekday()]}, "
             f"{now.day} {months_ru[now.month-1]} {now.year}"
         ).capitalize(),
+        "today_short": (
+            f"{days_ru_short[now.weekday()]}, "
+            f"{now.day:02d}.{now.month:02d}.{now.year}"
+        ),
         "forecast": get_forecast(),
         "forecast_all": json.dumps(get_all_forecast(), ensure_ascii=False),
         "items": items,
         "ticker_items": ticker_items,
         "ticker_speed": settings.ticker_speed,
         "rotation_seconds": settings.rotation_seconds,
+        "empty_rotation_seconds": settings.empty_rotation_seconds,
+        "upcoming_birthdays": next_birthdays,
+        "quote_text": quote["text"],
+        "quote_author": quote["author"],
+        "quotes_json": json.dumps(quotes, ensure_ascii=False),
     }
 
     return templates.TemplateResponse(request, "informer.html", ctx)
@@ -222,7 +362,7 @@ async def admin_employees(
     total = count_employees(name=name, birthday=birthday)
     total_pages = max(1, (total + per_page - 1) // per_page)
     today = date.today()
-    session_id = _get_session_id(request)
+    session_id = get_session_id(request)
     csrf_token = generate_csrf_token(session_id)
     return templates.TemplateResponse(
         request,
@@ -270,7 +410,7 @@ async def admin_announcements(
     )
     total_pages = max(1, (total + per_page - 1) // per_page)
     today = date.today()
-    session_id = _get_session_id(request)
+    session_id = get_session_id(request)
     csrf_token = generate_csrf_token(session_id)
     return templates.TemplateResponse(
         request,
@@ -336,11 +476,8 @@ async def add_announcement_route(
     date_from: str = Form(default=""),
     date_to: str = Form(default=""),
     priority: int = Form(default=0),
-    category: str = Form(default="info"),
-    is_pinned: bool = Form(default=False),
-    image_path: str = Form(default=""),
 ):
-    """Добавляет новое объявление."""
+    """Добавляет новое объявление (бегущая строка — только текст и сроки)."""
     require_csrf(request, csrf_token)
     add_announcement(
         title=title,
@@ -348,9 +485,6 @@ async def add_announcement_route(
         date_from=date.fromisoformat(date_from) if date_from else None,
         date_to=date.fromisoformat(date_to) if date_to else None,
         priority=priority,
-        category=category,
-        is_pinned=is_pinned,
-        image_path=image_path or None,
     )
     logger.info("Объявление добавлено через веб: %s", title or text[:50])
     return RedirectResponse(url="/admin/announcements", status_code=303)
@@ -371,7 +505,7 @@ async def edit_announcement_page(
     total = len(announcements)
     total_pages = 1
     today = date.today()
-    session_id = _get_session_id(request)
+    session_id = get_session_id(request)
     csrf_token = generate_csrf_token(session_id)
     return templates.TemplateResponse(
         request,
@@ -403,11 +537,8 @@ async def edit_announcement_route(
     date_from: str = Form(default=""),
     date_to: str = Form(default=""),
     priority: int = Form(default=0),
-    category: str = Form(default="info"),
-    is_pinned: bool = Form(default=False),
-    image_path: str = Form(default=""),
 ):
-    """Обновляет объявление."""
+    """Обновляет объявление (бегущая строка — только текст и сроки)."""
     require_csrf(request, csrf_token)
     update_announcement(
         announcement_id=announcement_id,
@@ -416,9 +547,6 @@ async def edit_announcement_route(
         date_from=date.fromisoformat(date_from) if date_from else None,
         date_to=date.fromisoformat(date_to) if date_to else None,
         priority=priority,
-        category=category,
-        is_pinned=is_pinned,
-        image_path=image_path or None,
     )
     logger.info("Объявление id=%d отредактировано через веб", announcement_id)
     return RedirectResponse(url="/admin/announcements", status_code=303)

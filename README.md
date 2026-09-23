@@ -45,6 +45,7 @@ docker compose up -d --build
 | `CORP_APP_TITLE` | `Корпоративный портал` | Заголовок |
 | `CORP_ORG_NAME` | `ООО "ЗАВОД РУСНИТ"` | Название организации |
 | `CORP_ROTATION_SECONDS` | `60` | Интервал смены слайдов (сек) |
+| `CORP_EMPTY_ROTATION_SECONDS` | `20` | Интервал ротации инфо-блоков, когда именинников нет (сек) |
 | `CORP_TICKER_SPEED` | `40` | Скорость бегущей строки (пикс/сек) |
 | `CORP_CHECK_TIME` | `06:00` | Время проверки дней рождений |
 | `CORP_WEATHER_LAT` | `54.6269` | Широта для прогноза |
@@ -65,11 +66,12 @@ docker compose up -d --build
 │   ├── scheduler.py     # Планировщик дней рождений
 │   ├── image_gen.py     # Генерация изображений
 │   ├── weather.py       # Прогноз погоды с кэшем
+│   ├── quotes.json      # Цитаты для инфо-ротации (редактируемый)
+│   ├── holidays.json    # Праздники для слайд-поздравлений (редактируемый)
 │   ├── templates/       # Jinja2 шаблоны
 │   └── static/          # CSS, фоны, поздравления
 ├── data/                # SQLite БД, кэш погоды
-├── nginx.conf           # Конфигурация nginx для HTTPS
-├── HTTPS_SETUP.md       # Руководство по настройке HTTPS
+├── nginx.conf           # Пример конфигурации nginx для HTTPS
 ├── Dockerfile
 ├── docker-compose.yml
 ├── requirements.txt
@@ -94,4 +96,4 @@ docker compose up -d --build
 - Авторизация администратора: Basic Auth (логин/пароль из `.env`)
 - CSRF-защита на всех POST-формах
 - Санитизация Markdown через `bleach` (защита от XSS)
-- Рекомендуется HTTPS через nginx (см. `HTTPS_SETUP.md`)
+- Рекомендуется HTTPS. Пример конфигурации nginx с TLS — в `nginx.conf`
