@@ -6,10 +6,11 @@
 import logging
 import sqlite3
 from contextlib import contextmanager
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 
 from app.config import settings
+from app.timeutils import now, today
 
 logger = logging.getLogger(__name__)
 
@@ -227,11 +228,10 @@ def get_birthday_employees() -> list[dict]:
     Returns:
         Список сотрудников у которых сегодня день рождения.
     """
-    today = date.today()
     with get_db() as conn:
         rows = conn.execute(
             "SELECT * FROM employees WHERE strftime('%m-%d', birthday) = ?",
-            (today.strftime("%m-%d"),),
+            (today().strftime("%m-%d"),),
         ).fetchall()
         return [dict(r) for r in rows]
 
@@ -241,16 +241,16 @@ def _build_announcement_where(
     search_date_from: str = "",
     search_date_to: str = "",
 ):
-    today = date.today().isoformat()
+    today_iso = today().isoformat()
     params: list[str] = []
     where_clauses: list[str] = []
 
     if active_only:
         where_clauses.append("is_active = 1")
         where_clauses.append("(date_from IS NULL OR date_from <= ?)")
-        params.append(today)
+        params.append(today_iso)
         where_clauses.append("(date_to IS NULL OR date_to >= ?)")
-        params.append(today)
+        params.append(today_iso)
 
     if search_date_from:
         where_clauses.append("date_from IS NOT NULL AND date_from >= ?")
@@ -361,7 +361,7 @@ def add_announcement(
             (
                 title,
                 text,
-                datetime.now().isoformat(),
+                now().isoformat(),
                 date_from.isoformat() if date_from else None,
                 date_to.isoformat() if date_to else None,
                 priority,
@@ -475,11 +475,11 @@ def auto_deactivate_expired() -> int:
     Returns:
         Количество деактивированных записей.
     """
-    today = date.today().isoformat()
+    today_iso = today().isoformat()
     with get_db() as conn:
         cur = conn.execute(
             "UPDATE announcements SET is_active = 0 WHERE is_active = 1 AND date_to IS NOT NULL AND date_to < ?",
-            (today,),
+            (today_iso,),
         )
         count = cur.rowcount
         if count:
@@ -518,7 +518,7 @@ def log_greeting(employee_id: int, image_path: str) -> int:
     """
     with get_db() as conn:
         cur = conn.execute(
-            "INSERT INTO greetings_log (employee_id, image_path, created_at) VALUES (?, ?, date('now'))",
-            (employee_id, image_path),
+            "INSERT INTO greetings_log (employee_id, image_path, created_at) VALUES (?, ?, ?)",
+            (employee_id, image_path, today().isoformat()),
         )
         return cur.lastrowid

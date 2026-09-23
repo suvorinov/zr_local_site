@@ -4,13 +4,14 @@
 """
 
 import logging
-from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.config import settings
 from app.db import get_birthday_employees, log_greeting
 from app.image_gen import generate_greeting
+from app.timeutils import now
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,7 @@ def check_birthdays():
     Находит всех сотрудников с днём рождения сегодня,
     генерирует для каждого поздравительное изображение.
     """
-    logger.info("Проверка дней рождений на %s", datetime.now().strftime("%Y-%m-%d"))
+    logger.info("Проверка дней рождений на %s", now().strftime("%Y-%m-%d"))
     employees = get_birthday_employees()
 
     if not employees:
@@ -55,6 +56,7 @@ def setup_scheduler() -> BackgroundScheduler:
         "cron",
         hour=int(hour),
         minute=int(minute),
+        timezone=ZoneInfo(settings.timezone),
         id="birthday_check",
         replace_existing=True,
     )

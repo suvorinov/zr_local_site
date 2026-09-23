@@ -18,6 +18,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
 
+from app import timeutils
 from app.config import settings
 from app.csrf import generate_csrf_token, get_session_id, require_csrf
 from app.db import (
@@ -170,7 +171,7 @@ def _get_holiday_items(today: date | None = None) -> list[dict]:
             logger.error("Не удалось загрузить %s", holidays_file)
             _HOLIDAYS_CACHE = []
 
-    today = today or date.today()
+    today = today or timeutils.today()
     md = f"{today.month:02d}-{today.day:02d}"
     return [
         {
@@ -271,7 +272,7 @@ def _get_upcoming_birthdays(horizon: int = 3) -> list[dict]:
         Список словарей {days, label, names} только для дней,
         где есть именинники, отсортированный по близости даты.
     """
-    today = date.today()
+    today = timeutils.today()
     buckets: dict[int, list[str]] = {}
     for emp in get_employees():
         try:
@@ -302,7 +303,7 @@ async def index(request: Request):
     items = _get_birthday_items() + _get_holiday_items()
     ticker_items = _get_ticker_items()
 
-    now = datetime.now()
+    now = timeutils.now()
     days_ru = ["понедельник","вторник","среда","четверг",
                 "пятница","суббота","воскресенье"]
     days_ru_short = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"]
@@ -361,7 +362,7 @@ async def admin_employees(
     employees = search_employees(name=name, birthday=birthday, limit=per_page, offset=offset)
     total = count_employees(name=name, birthday=birthday)
     total_pages = max(1, (total + per_page - 1) // per_page)
-    today = date.today()
+    today = timeutils.today()
     session_id = get_session_id(request)
     csrf_token = generate_csrf_token(session_id)
     return templates.TemplateResponse(
@@ -409,7 +410,7 @@ async def admin_announcements(
         search_date_to=search_date_to,
     )
     total_pages = max(1, (total + per_page - 1) // per_page)
-    today = date.today()
+    today = timeutils.today()
     session_id = get_session_id(request)
     csrf_token = generate_csrf_token(session_id)
     return templates.TemplateResponse(
@@ -504,7 +505,7 @@ async def edit_announcement_page(
     announcements = get_announcements(active_only=False)
     total = len(announcements)
     total_pages = 1
-    today = date.today()
+    today = timeutils.today()
     session_id = get_session_id(request)
     csrf_token = generate_csrf_token(session_id)
     return templates.TemplateResponse(

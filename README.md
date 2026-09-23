@@ -48,6 +48,7 @@ docker compose up -d --build
 | `CORP_EMPTY_ROTATION_SECONDS` | `20` | Интервал ротации инфо-блоков, когда именинников нет (сек) |
 | `CORP_TICKER_SPEED` | `40` | Скорость бегущей строки (пикс/сек) |
 | `CORP_CHECK_TIME` | `06:00` | Время проверки дней рождений |
+| `CORP_TIMEZONE` | `Europe/Moscow` | Часовой пояс приложения (IANA) |
 | `CORP_WEATHER_LAT` | `54.6269` | Широта для прогноза |
 | `CORP_WEATHER_LON` | `39.6916` | Долгота для прогноза |
 | `CORP_ADMIN_USERNAME` | *(обязательно)* | Логин администратора |
@@ -64,6 +65,7 @@ docker compose up -d --build
 │   ├── models.py        # Pydantic модели
 │   ├── csrf.py          # CSRF-защита форм
 │   ├── scheduler.py     # Планировщик дней рождений
+│   ├── timeutils.py     # Дата/время в часовом поясе CORP_TIMEZONE
 │   ├── image_gen.py     # Генерация изображений
 │   ├── weather.py       # Прогноз погоды с кэшем
 │   ├── quotes.json      # Цитаты для инфо-ротации (редактируемый)

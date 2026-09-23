@@ -5,6 +5,7 @@
 
 import sys
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
@@ -21,6 +22,7 @@ class Settings(BaseSettings):
         rotation_seconds: Интервал ротации поздравлений в секундах.
         empty_rotation_seconds: Интервал ротации инфо-блоков, когда именинников нет.
         check_time: Время проверки дней рождений (ЧЧ:ММ).
+        timezone: Часовой пояс приложения (IANA, например Europe/Moscow).
         ticker_speed: Скорость бегущей строки (пикселей в секунду).
         admin_username: Логин администратора (обязательно задать в .env).
         admin_password: Пароль администратора (обязательно задать в .env).
@@ -34,6 +36,7 @@ class Settings(BaseSettings):
     rotation_seconds: int = 30
     empty_rotation_seconds: int = 20
     check_time: str = "06:00"
+    timezone: str = "Europe/Moscow"
     weather_lat: float = 54.6269
     weather_lon: float = 39.6916
     ticker_speed: int = 40
@@ -67,6 +70,19 @@ class Settings(BaseSettings):
             raise ValueError(
                 "Пароль 'admin' запрещён. "
                 "Задайте надёжный пароль в CORP_ADMIN_PASSWORD."
+            )
+        return v
+
+    @field_validator("timezone")
+    @classmethod
+    def timezone_valid(cls, v: str) -> str:
+        """Проверяет, что часовой пояс существует (валидный IANA-идентификатор)."""
+        try:
+            ZoneInfo(v)
+        except ZoneInfoNotFoundError:
+            raise ValueError(
+                f"Неизвестный часовой пояс: '{v}'. "
+                "Примеры: Europe/Moscow, Asia/Yekaterinburg, UTC."
             )
         return v
 

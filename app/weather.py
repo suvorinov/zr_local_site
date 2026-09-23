@@ -7,9 +7,12 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote
 from urllib.request import urlopen
+from zoneinfo import ZoneInfo
 
 from app.config import settings
+from app.timeutils import now
 
 logger = logging.getLogger(__name__)
 _CACHE_PATH = Path("data") / "weather_cache.json"
@@ -49,7 +52,7 @@ def _fetch_forecast() -> list[dict] | None:
         f"latitude={settings.weather_lat}"
         f"&longitude={settings.weather_lon}"
         "&hourly=temperature_2m,precipitation_probability,weather_code"
-        "&timezone=auto"
+        f"&timezone={quote(settings.timezone)}"
         "&forecast_hours=24"
     )
     url = f"https://api.open-meteo.com/v1/forecast?{params}"
@@ -73,10 +76,11 @@ def _fetch_forecast() -> list[dict] | None:
     codes = hourly.get("weather_code", [])
 
     result = []
-    now = datetime.now()
+    tz = ZoneInfo(settings.timezone)
+    ref_time = now()
     for t, temp, precip, code in zip(times, temps, precips, codes):
-        dt = datetime.fromisoformat(t)
-        if dt < now:
+        dt = datetime.fromisoformat(t).replace(tzinfo=tz)
+        if dt < ref_time:
             continue
         result.append({
             "hour": dt.strftime("%H:%M"),
@@ -95,14 +99,17 @@ def _cached_forecast() -> list[dict]:
     Returns:
         Список часовых прогнозов.
     """
-    now = datetime.now()
+    ref_time = now()
+    tz = ZoneInfo(settings.timezone)
     if _CACHE_PATH.exists():
         try:
             cached = json.loads(_CACHE_PATH.read_text())
             cache_time = datetime.fromisoformat(cached["cached_at"])
-            if (now - cache_time).total_seconds() < 900:
+            if cache_time.tzinfo is None:
+                cache_time = cache_time.replace(tzinfo=tz)
+            if (ref_time - cache_time).total_seconds() < 900:
                 return cached["data"]
-        except (ValueError, KeyError):
+        except (ValueError, KeyError, TypeError):
             pass
 
     data = _fetch_forecast()
@@ -116,7 +123,7 @@ def _cached_forecast() -> list[dict]:
 
     _CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
     _CACHE_PATH.write_text(json.dumps(
-        {"cached_at": now.isoformat(), "data": data},
+        {"cached_at": ref_time.isoformat(), "data": data},
         ensure_ascii=False,
     ))
     return data
@@ -139,8 +146,8 @@ def get_forecast() -> list[dict]:
         hour, temp, precip, emoji.
     """
     all_hours = get_all_forecast()
-    now = datetime.now()
-    now_hhmm = now.hour * 100 + now.minute
+    ref = now()
+    now_hhmm = ref.hour * 100 + ref.minute
     result = []
     day_offset = 0
     prev_hour = -1

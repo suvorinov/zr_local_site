@@ -6,6 +6,8 @@ services:
     volumes:
       - ./data:/app/data
       - ./app/static/greetings:/app/app/static/greetings
+    environment:
+      - TZ=${TZ:-Europe/Moscow}
     env_file:
       - .env
     restart: unless-stopped
