@@ -1,0 +1,16 @@
+.git
+.venv
+.env
+.csrf_secret
+__pycache__
+*.pyc
+*.pyo
+data/
+app/static/greetings/*.jpg
+app/static/greetings/samples/
+docker-compose*.yml
+Dockerfile
+Makefile
+run.sh
+README.md
+*.md

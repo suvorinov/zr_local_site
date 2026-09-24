@@ -1,8 +1,15 @@
-"""Генерация поздравительных изображений.
+"""Генерация поздравительных открыток.
 
-Создаёт изображение с фоновой картинкой, декоративными элементами
-и поздравительным текстом. Каждый раз генерируется уникальная
-композиция за счёт случайного выбора цветов, расположения и эффектов.
+Создаёт праздничную открытку поверх фоновой картинки:
+- композиция из градиента, мягкого золотого сияния, звёзд и рамки;
+- заголовок («С Днём Рождения!» / «С Юбилеем!»);
+- крупная цифра возраста для юбилейных дат;
+- обращение с учётом пола сотрудника («Дорогой» / «Дорогая»);
+- пожелание из тематического набора (обычный день рождения / юбилей);
+- подпись коллектива.
+
+Текст собирается автоматически из шаблонов по имени, полу и возрасту,
+поэтому готовая открытка создаётся для любого количества сотрудников.
 """
 
 import logging
@@ -17,55 +24,135 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-_GREETING_TEXTS = (
+_FONT_DIR = Path(__file__).resolve().parent / "static" / "fonts"
+_LOBBY_PATH = _FONT_DIR / "lobster" / "Lobster-Regular.ttf"
+
+_GOLD = (255, 215, 0)
+_WHITE = (255, 255, 255)
+_DIM_GOLD = (222, 190, 96)
+
+# Юбилейная дата: возраст кратен шагу и не меньше минимума
+_JUBILEE_STEP = 5
+_JUBILEE_MIN_AGE = 25
+
+_HEADLINES = (
     "С Днём Рождения!",
-    "С Днём Рождения \u2605",
+    "С Днём Рождения!",
     "Поздравляем с Днём Рождения!",
-    "С праздником!",
-    "Happy Birthday!",
-    "С Днём Рождения \u2728",
 )
 
-_DECORATION_PHRASES = (
-    "\u2605 \u2605 \u2605",
-    "\u2728 \u2728 \u2728",
-    "\u2665 \u2665 \u2665",
-    "\u2606 \u2606 \u2606",
+_ADDRESS_PREFIX = {"male": "Дорогой", "female": "Дорогая"}
+
+_NEUTRAL_WISHES = (
+    "Желаем крепкого здоровья, энергии и новых побед! "
+    "Пусть каждый день приносит радость и хорошее настроение.",
+    "Пусть сбываются самые смелые мечты, а работа приносит только "
+    "удовольствие и уверенность в завтрашнем дне.",
+    "Желаем удачи во всех начинаниях, благополучия в семье "
+    "и верных друзей рядом. С праздником!",
+    "Пусть всё задуманное непременно сбывается, а рядом всегда "
+    "будут близкие люди и отличное настроение!",
+    "Пусть жизнь дарит яркие моменты, а здоровье остаётся крепким. "
+    "Счастья вам и вашим близким!",
+    "Желаем стабильности, спокойствия и уверенности в завтрашнем дне. "
+    "Пусть все планы легко воплощаются в жизнь.",
+    "Пусть работа вдохновляет, а дома ждёт уют и тепло. "
+    "Здоровья, сил и доброго настроения!",
+    "Желаем, чтобы каждый день приносил повод для улыбки, "
+    "а все дела складывались легко и удачно. С праздником!",
+    "Пусть удача сопутствует во всём, а рядом будут надёжные люди. "
+    "Желаем благополучия, здоровья и душевного равновесия.",
+    "Желаем, чтобы жизнь была наполнена интересными событиями, "
+    "а каждый новый день открывал новые возможности. С праздником!",
 )
+
+_FEMALE_WISHES = (
+    "Желаем здоровья, красоты и вдохновения! Пусть каждый день будет "
+    "наполнен теплом, улыбками и заботой близких.",
+    "Пусть сбываются самые заветные мечты, а настроение всегда "
+    "остаётся солнечным и радостным.",
+    "Желаем гармонии, взаимопонимания и любви в семье, лёгкости "
+    "в делах и ярких впечатлений каждый день.",
+    "Пусть в душе всегда цветёт весна, а рядом будут только добрые "
+    "и искренние люди. С праздником!",
+    "Пусть каждый день начинается с улыбки, а любое дело ладится. "
+    "Красоты вам, здоровья и счастья!",
+    "Желаем, чтобы жизнь была наполнена теплом, заботой и вниманием. "
+    "Пусть всё получается легко, а сердце всегда будет наполнено радостью.",
+    "Пусть вдохновение не покидает, а каждый день дарит повод "
+    "улыбнуться. Здоровья, красоты и душевного спокойствия!",
+    "Желаем, чтобы рядом были те, кто ценит и поддерживает, "
+    "а впереди ждали только светлые и радостные дни. С праздником!",
+    "Пусть жизнь будет щедрой на приятные сюрпризы, тёплые встречи "
+    "и моменты, от которых становится хорошо на душе.",
+    "Желаем лёгкости во всём, внутреннего света и уверенности в себе. "
+    "Пусть каждый день приносит только хорошие новости!",
+)
+
+_JUBILEE_WISHES = (
+    "Пусть новый десяток станет самым счастливым! Крепкого здоровья, "
+    "энергии и исполнения самых смелых желаний.",
+    "Желаем бодрости духа, мудрости и молодости сердца! Пусть всё "
+    "задуманное сбывается, а близкие радуют каждый день.",
+    "С юбилеем! Пусть впереди будет много светлых дней, верных "
+    "друзей и поводов для гордости.",
+    "Пусть юбилей станет началом новой главы, полной здоровья, "
+    "радости и уважения. С праздником!",
+    "Желаем долгих лет в окружении любящих людей, благополучия "
+    "дома и признания на работе!",
+    "С юбилеем! Пусть накопленный опыт и мудрость помогают "
+    "идти вперёд, а впереди ждёт только лучшее. Здоровья и счастья!",
+    "Желаем, чтобы каждый новый год жизни приносил новые возможности, "
+    "яркие события и поводы для радости. С юбилеем!",
+    "Пусть юбилей станет поводом для тёплых воспоминаний "
+    "и вдохновения на новые свершения. Крепкого здоровья и благополучия!",
+    "С юбилеем! Пусть впереди будет много интересных проектов, "
+    "добрых людей рядом и поводов для искренней улыбки.",
+    "Желаем, чтобы возраст был лишь цифрой, а в душе всегда жила "
+    "молодость, энергия и вера в лучшее. С праздником!",
+)
+
 
 _MALE_PALETTE = (
-    ((10, 20, 60, 160), (30, 60, 120, 100)),   # сине-серый
-    ((40, 20, 60, 160), (80, 40, 100, 100)),    # фиолетовый
-    ((10, 40, 60, 160), (20, 80, 120, 100)),    # синий
-    ((30, 30, 30, 160), (80, 80, 80, 100)),     # тёмный
+    ((11, 24, 56, 200), (30, 58, 108, 160)),    # тёмно-синий
+    ((22, 28, 56, 200), (58, 96, 148, 160)),    # синий
+    ((28, 22, 52, 200), (86, 70, 140, 160)),    # сине-фиолетовый
 )
 
 _FEMALE_PALETTE = (
-    ((120, 20, 60, 160), (180, 60, 100, 100)),   # розовый
-    ((140, 40, 80, 160), (200, 80, 120, 100)),   # малиновый
-    ((100, 30, 60, 160), (160, 70, 100, 100)),   # пурпурный
-    ((180, 100, 40, 160), (220, 140, 60, 100)),  # золотой
+    ((92, 24, 60, 210), (176, 78, 120, 180)),   # бордо → розовый
+    ((62, 18, 56, 210), (150, 54, 112, 180)),   # слива → малиновый
+    ((124, 44, 52, 210), (198, 122, 92, 180)),  # кирпичный → коралл
 )
 
 
-def _get_font(size: int = 60) -> ImageFont.FreeTypeFont:
+def _get_font(size: int, decorative: bool = False) -> ImageFont.FreeTypeFont:
     """Загружает шрифт для отрисовки текста.
 
     Args:
         size: Размер шрифта.
+        decorative: Использовать декоративный шрифт (Lobster) для имен
+            и заголовков; обычные тексты — DejaVu Sans.
 
     Returns:
         Объект шрифта.
     """
-    font_paths = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
-        "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
-    ]
-    for path in font_paths:
+    if decorative:
+        if _LOBBY_PATH.exists():
+            return ImageFont.truetype(str(_LOBBY_PATH), size)
+        paths = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+        ]
+    else:
+        paths = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans.ttf",
+        ]
+    for path in paths:
         if Path(path).exists():
-            return ImageFont.truetype(str(path), size)
+            return ImageFont.truetype(path, size)
     return ImageFont.load_default()
 
 
@@ -77,9 +164,6 @@ def _select_background(gender: str) -> Path:
 
     Returns:
         Путь к выбранному фоновому изображению.
-
-    Raises:
-        FileNotFoundError: Если не найдены фоновые изображения.
     """
     bg_dir = settings.background_dir / gender
     if not bg_dir.exists():
@@ -120,57 +204,89 @@ def _draw_gradient(draw: ImageDraw, width: int, height: int,
         draw.line([(0, y), (width, y)], fill=(r, g, b, a))
 
 
-def _draw_confetti(draw: ImageDraw, width: int, height: int,
-                   palette: list[tuple]) -> None:
-    """Рисует декоративные элементы (конфетти, круги, звёзды).
+def _draw_radial_glow(overlay: Image.Image, cx: int, cy: int,
+                      radius: int, color: tuple, alpha: int) -> None:
+    """Рисует мягкое радиальное сияние вокруг центра.
+
+    Args:
+        overlay: RGBA-слой для наложения.
+        cx: Центр по X.
+        cy: Центр по Y.
+        radius: Радиус сияния.
+        color: Цвет (RGB).
+        alpha: Максимальная прозрачность в центре.
+    """
+    w, h = overlay.size
+    glow = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(glow)
+    for i in range(48, 0, -1):
+        r = radius * i // 48
+        a = int(alpha * i / 48)
+        draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(*color, a))
+    overlay.alpha_composite(glow.filter(ImageFilter.GaussianBlur(radius=int(radius * 0.35))))
+
+
+def _draw_stars(draw: ImageDraw, width: int, height: int) -> None:
+    """Рисует рассыпанные праздничные звёзды и точки.
 
     Args:
         draw: Объект ImageDraw.
         width: Ширина изображения.
         height: Высота изображения.
-        palette: Список цветов для элементов.
     """
     colors = [
-        (255, 200, 50, 200),   # золотой
-        (255, 100, 100, 180),  # красный
-        (100, 200, 255, 180),  # голубой
-        (200, 100, 255, 180),  # фиолетовый
-        (100, 255, 150, 180),  # зелёный
+        (255, 232, 150, 220),   # тёплый золотой
+        (255, 255, 255, 200),   # белый
+        (255, 210, 90, 200),    # золотой
     ]
-    random.shuffle(colors)
-
-    for _ in range(random.randint(20, 40)):
-        x = random.randint(0, width)
-        y = random.randint(0, height)
-        r = random.randint(4, 18)
+    for _ in range(random.randint(16, 26)):
+        x = random.randint(40, width - 40)
+        y = random.randint(60, height - 60)
+        r = random.randint(3, 11)
         color = random.choice(colors)
-        shape = random.choice(['circle', 'rect', 'star'])
-
-        if shape == 'circle':
-            draw.ellipse([x - r, y - r, x + r, y + r],
-                         fill=color, outline=None)
-        elif shape == 'rect':
-            angle = random.randint(0, 45)
-            points = [
-                (x - r, y - r // 2), (x + r, y - r // 2),
-                (x + r, y + r // 2), (x - r, y + r // 2),
-            ]
-            draw.polygon(points, fill=color)
-        elif shape == 'star':
+        if random.random() < 0.7:
             points = []
             for i in range(10):
                 rad = r if i % 2 == 0 else r // 2
                 a = math.pi * 2 * i / 10 - math.pi / 2
-                points.append((x + rad * math.cos(a),
-                               y + rad * math.sin(a)))
+                points.append((x + rad * math.cos(a), y + rad * math.sin(a)))
             draw.polygon(points, fill=color)
+        else:
+            draw.ellipse([x - r, y - r, x + r, y + r], fill=color)
+
+
+def _draw_vignette(overlay: Image.Image) -> None:
+    """Накладывает виньетку (затемнение по краям) на overlay-слой.
+
+    Args:
+        overlay: RGBA-изображение-оверлей для наложения виньетки.
+    """
+    import numpy as np
+
+    height, width = overlay.size[1], overlay.size[0]
+
+    y_coords, x_coords = np.ogrid[:height, :width]
+    cx, cy = width / 2, height / 2
+
+    dist_x = np.minimum(x_coords, width - x_coords) / cx
+    dist_y = np.minimum(y_coords, height - y_coords) / cy
+    ratio = np.minimum(dist_x, dist_y)
+
+    alpha = np.where(ratio < 0.5, ((0.5 - ratio) * 200).astype(np.uint8), 0)
+
+    vignette_img = Image.fromarray(
+        np.stack([np.zeros_like(alpha), np.zeros_like(alpha),
+                  np.zeros_like(alpha), alpha], axis=-1),
+        'RGBA'
+    )
+    overlay.alpha_composite(vignette_img)
 
 
 def _draw_text_with_shadow(draw: ImageDraw, xy: tuple[int, int],
                             text: str, font: ImageFont.FreeTypeFont,
-                            fill: str, shadow_color: str = "black",
-                            shadow_offset: int = 3) -> None:
-    """Рисует текст с тенью.
+                            fill: tuple, shadow_color: str = "black",
+                            shadow_offset: int = 4) -> None:
+    """Рисует текст с мягкой тенью.
 
     Args:
         draw: Объект ImageDraw.
@@ -182,113 +298,146 @@ def _draw_text_with_shadow(draw: ImageDraw, xy: tuple[int, int],
         shadow_offset: Смещение тени.
     """
     x, y = xy
-    draw.text((x + shadow_offset, y + shadow_offset), text,
-              fill=shadow_color, font=font)
+    for dx, dy in [(-2, 2), (2, 2), (-2, 0), (2, 0), (0, 3), (0, 5)]:
+        draw.text((x + dx, y + dy), text, fill=shadow_color, font=font)
+    draw.text((x, y + 2), text, fill=shadow_color, font=font)
     draw.text((x, y), text, fill=fill, font=font)
 
 
-def _draw_text_with_outline(draw: ImageDraw, xy: tuple[int, int],
-                              text: str, font: ImageFont.FreeTypeFont,
-                              fill: str, outline_color: str = "black") -> None:
-    """Рисует текст с обводкой.
-
-    Args:
-        draw: Объект ImageDraw.
-        xy: Координаты текста.
-        text: Текст.
-        font: Шрифт.
-        fill: Цвет текста.
-        outline_color: Цвет обводки.
-    """
-    x, y = xy
-    for dx, dy in [(-2, -2), (-2, 2), (2, -2), (2, 2),
-                   (-2, 0), (2, 0), (0, -2), (0, 2)]:
-        draw.text((x + dx, y + dy), text, fill=outline_color, font=font)
-    draw.text((x, y), text, fill=fill, font=font)
-
-
-def _draw_vignette(overlay: Image.Image, width: int, height: int) -> None:
-    """Накладывает виньетку (затемнение по краям) на overlay-слой.
-
-    Оптимизированная версия — использует numpy вместо поксельного цикла.
-    ~100x быстрее оригинала (2M итераций -> векторная операция).
-
-    Args:
-        overlay: RGBA-изображение-оверлей для наложения виньетки.
-        width: Ширина изображения.
-        height: Высота изображения.
-    """
-    import numpy as np
-
-    # Создаём координатную сетку
-    y_coords, x_coords = np.ogrid[:height, :width]
-
-    # Центр изображения
-    cx, cy = width / 2, height / 2
-
-    # Расстояние от центра для каждого пикселя (векторно)
-    dist_x = np.minimum(x_coords, width - x_coords) / cx
-    dist_y = np.minimum(y_coords, height - y_coords) / cy
-    ratio = np.minimum(dist_x, dist_y)
-
-    # Вычисляем альфа-канал: затемняем края где ratio < 0.5
-    alpha = np.where(ratio < 0.5, ((0.5 - ratio) * 200).astype(np.uint8), 0)
-
-    # Конвертируем в RGBA изображение и рисуем поверх overlay
-    vignette_img = Image.fromarray(
-        np.stack([np.zeros_like(alpha), np.zeros_like(alpha),
-                  np.zeros_like(alpha), alpha], axis=-1),
-        'RGBA'
-    )
-    Image.alpha_composite(overlay, vignette_img)
-
-
-def _draw_decorative_line(draw: ImageDraw, cx: int, y: int,
-                            width: int, color: tuple) -> None:
-    """Рисует декоративную линию с ромбом по центру.
+def _draw_ornament(draw: ImageDraw, cx: int, y: int,
+                   width: int, color: tuple, accent: tuple) -> None:
+    """Рисует декоративную линию со звёздочками и ромбом по центру.
 
     Args:
         draw: Объект ImageDraw.
         cx: Центр по X.
         y: Позиция по Y.
         width: Ширина линии.
-        color: Цвет (RGBA).
+        color: Цвет линии (RGBA).
+        accent: Цвет звёздочек (RGBA).
     """
-    line_w = min(width // 3, 200)
-    draw.line([(cx - line_w, y), (cx + line_w, y)],
-              fill=color, width=2)
-    draw.polygon([
-        (cx, y - 6), (cx + 6, y),
-        (cx, y + 6), (cx - 6, y),
-    ], fill=color)
+    span = min(width // 2 - 120, 480)
+    half = span // 3
+    draw.line([(cx - half, y), (cx - span // 2 - 14, y)], fill=color, width=2)
+    draw.line([(cx + half, y), (cx + span // 2 + 14, y)], fill=color, width=2)
+    for star_x in (cx - half, cx + half):
+        pts = []
+        for i in range(10):
+            rad = 9 if i % 2 == 0 else 4
+            a = math.pi * 2 * i / 10 - math.pi / 2
+            pts.append((star_x + rad * math.cos(a), y + rad * math.sin(a)))
+        draw.polygon(pts, fill=accent)
+    draw.polygon(
+        [(cx, y - 7), (cx + 7, y), (cx, y + 7), (cx - 7, y)],
+        fill=accent,
+    )
+
+
+def _draw_frame(draw: ImageDraw, width: int, height: int) -> None:
+    """Рисует тонкую золотую рамку с декоративными уголками.
+
+    Args:
+        draw: Объект ImageDraw.
+        width: Ширина изображения.
+        height: Высота изображения.
+    """
+    inset = 34
+    gold = (255, 215, 0, 170)
+    draw.rectangle([inset, inset, width - inset, height - inset],
+                   outline=gold, width=3)
+    draw.rectangle([inset + 10, inset + 10, width - inset - 10, height - inset - 10],
+                   outline=(255, 215, 0, 70), width=1)
+    r = 13
+    for cx, cy in ((inset, inset), (width - inset, inset),
+                   (inset, height - inset), (width - inset, height - inset)):
+        draw.polygon(
+            [(cx, cy - r), (cx + r, cy), (cx, cy + r), (cx - r, cy)],
+            fill=(255, 215, 0, 90),
+        )
+
+
+def _wrap_lines(draw: ImageDraw, text: str, font: ImageFont.FreeTypeFont,
+                max_width: int) -> list[str]:
+    """Разбивает текст на строки по ширине.
+
+    Args:
+        draw: Объект ImageDraw.
+        text: Текст.
+        font: Шрифт.
+        max_width: Максимальная ширина строки в пикселях.
+
+    Returns:
+        Список строк.
+    """
+    lines: list[str] = []
+    current = ""
+    for word in text.split():
+        candidate = (current + " " + word).strip()
+        if draw.textlength(candidate, font=font) <= max_width or not current:
+            current = candidate
+        else:
+            lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
+    return lines
+
+
+def is_jubilee_age(age: int | None) -> bool:
+    """Определяет, является ли возраст юбилейной датой.
+
+    Args:
+        age: Возраст сотрудника (None — неизвестен).
+
+    Returns:
+        True, если возраст кратен шагу юбилея и не меньше минимума.
+    """
+    if not age:
+        return False
+    return age >= _JUBILEE_MIN_AGE and age % _JUBILEE_STEP == 0
+
+
+def _personal_name(full_name: str) -> str:
+    """Возвращает имя и отчество из ФИО (слова 2 и 3).
+
+    Args:
+        full_name: ФИО сотрудника.
+
+    Returns:
+        Имя и отчество сотрудника (без отчества, если его нет).
+    """
+    parts = full_name.split()
+    if len(parts) >= 3:
+        return f"{parts[1]} {parts[2]}"
+    if len(parts) == 2:
+        return parts[1]
+    return parts[0] if parts else full_name
 
 
 def generate_greeting(
     employee_name: str,
     gender: str,
+    age: int | None = None,
     output_path: str | Path | None = None,
 ) -> str:
-    """Генерирует поздравительное изображение.
+    """Генерирует праздничную поздравительную открытку.
 
-    Каждый раз создаётся уникальная композиция:
-    - фоновая картинка по полу сотрудника
-    - цветной градиент
-    - декоративные элементы
-    - виньетка
-    - случайный вариант поздравительного текста
-    - имя сотрудника с декоративными линиями
+    Композиция собирается по полу и возрасту сотрудника:
+    - палитра фона (мужская/женская);
+    - заголовок «С Юбилеем!» и крупная цифра возраста для юбилейных дат;
+    - обращение «Дорогой/Дорогая <имя> <отчество>!»;
+    - пожелание из набора для обычного дня рождения или юбилея;
+    - подпись коллектива.
 
     Args:
-        employee_name: Имя сотрудника.
+        employee_name: ФИО сотрудника.
         gender: Пол сотрудника (male/female).
+        age: Возраст сотрудника (для юбилейных дат).
         output_path: Путь для сохранения. По умолчанию генерируется
-                     автоматически в каталоге greetings.
+                     автоматически в каталоге greetings с учётом возраста.
 
     Returns:
-        Относительный путь к созданному изображению.
-
-    Raises:
-        FileNotFoundError: Если не найдены фоновые изображения.
+        Абсолютный путь к созданному изображению.
     """
     bg_path = _select_background(gender)
     img = Image.open(bg_path).convert("RGBA")
@@ -298,122 +447,100 @@ def generate_greeting(
     draw = ImageDraw.Draw(overlay)
 
     palette = _MALE_PALETTE if gender == "male" else _FEMALE_PALETTE
-    colors = random.choice(palette)
+    color_top, color_bottom = random.choice(palette)
 
-    _draw_gradient(draw, img.width, img.height, colors[0], colors[1])
-
-    if random.random() < 0.5:
-        img = img.filter(ImageFilter.GaussianBlur(radius=random.uniform(1, 3)))
-
-    _draw_confetti(draw, img.width, img.height, palette)
-
-    _draw_vignette(overlay, img.width, img.height)
+    _draw_gradient(draw, img.width, img.height, color_top, color_bottom)
+    _draw_radial_glow(overlay, img.width // 2, 500, 780, (255, 210, 90), 80)
+    _draw_stars(draw, img.width, img.height)
+    _draw_vignette(overlay)
 
     result = Image.alpha_composite(img, overlay)
-
     draw_result = ImageDraw.Draw(result)
 
-    font_large = _get_font(90)
-    font_medium = _get_font(50)
-    font_small = _get_font(36)
+    jubilee = is_jubilee_age(age)
 
-    layout = random.choice(['center', 'bottom', 'top'])
+    headline = random.choice(_HEADLINES if not jubilee else ("С Юбилеем!",))
+    display_age = age if jubilee else None
 
-    greeting_text = random.choice(_GREETING_TEXTS)
-    decoration = random.choice(_DECORATION_PHRASES)
+    address = f"{_ADDRESS_PREFIX.get(gender, 'Дорогой')} {_personal_name(employee_name)}!"
+    if jubilee:
+        wish = random.choice(_JUBILEE_WISHES)
+    elif gender == "female":
+        wish = random.choice(_FEMALE_WISHES)
+    else:
+        wish = random.choice(_NEUTRAL_WISHES)
 
-    bbox = draw_result.textbbox((0, 0), greeting_text, font=font_large)
-    text_w = bbox[2] - bbox[0]
-    cx = (img.width - text_w) // 2
+    font_head = _get_font(104, decorative=True)
+    font_num = _get_font(240, decorative=True)
+    font_label = _get_font(58, decorative=True)
+    font_name = _get_font(92, decorative=True)
+    font_wish = _get_font(42)
+    font_sign = _get_font(30)
 
-    bbox_name = draw_result.textbbox((0, 0), employee_name, font=font_medium)
-    name_w = bbox_name[2] - bbox_name[0]
-    name_cx = (img.width - name_w) // 2
+    max_text_w = img.width - 420
+    wish_lines = _wrap_lines(draw_result, wish, font_wish, max_text_w)
 
-    text_effect = random.choice(['shadow', 'outline', 'none'])
+    blocks: list[dict] = [{"kind": "text", "text": headline, "font": font_head,
+                           "fill": _GOLD, "glow": True, "gap": 26}]
+    if display_age:
+        blocks.append({"kind": "text", "text": str(display_age), "font": font_num,
+                       "fill": _GOLD, "glow": True, "gap": 10})
+        blocks.append({"kind": "text", "text": "лет", "font": font_label,
+                       "fill": _WHITE, "glow": False, "gap": 26})
+    blocks.append({"kind": "ornament", "gap": 30})
+    blocks.append({"kind": "text", "text": address, "font": font_name,
+                   "fill": _WHITE, "glow": False, "gap": 34})
+    blocks.append({"kind": "wish", "lines": wish_lines, "font": font_wish,
+                   "fill": _WHITE, "gap": 8})
+    blocks.append({"kind": "ornament", "gap": 30})
+    blocks.append({"kind": "text", "text": settings.org_name, "font": font_sign,
+                   "fill": _DIM_GOLD, "glow": False, "gap": 24})
 
-    def draw_styled(d, pos, text, font, color):
-        if text_effect == 'shadow':
-            _draw_text_with_shadow(d, pos, text, font, color)
-        elif text_effect == 'outline':
-            _draw_text_with_outline(d, pos, text, font, color)
+    def block_height(b: dict) -> int:
+        if b["kind"] == "ornament":
+            return 30
+        if b["kind"] == "wish":
+            font = b["font"]
+            asc, desc = font.getmetrics()
+            return len(b["lines"]) * (asc + desc + 8)
+        font = b["font"]
+        asc, desc = font.getmetrics()
+        return asc + desc
+
+    total_height = sum(block_height(b) + b.get("gap", 0) for b in blocks)
+    y = (img.height - total_height) // 2
+
+    for b in blocks:
+        y += b.get("gap", 0)
+        if b["kind"] == "ornament":
+            _draw_ornament(draw_result, img.width // 2, y + 14,
+                           img.width, (255, 215, 0, 150), (255, 215, 0, 220))
+            y += 30
+            continue
+        if b["kind"] == "wish":
+            asc, desc = b["font"].getmetrics()
+            for line in b["lines"]:
+                line_w = draw_result.textlength(line, font=b["font"])
+                x = (img.width - line_w) // 2
+                draw_result.text((x, y), line, fill=b["fill"], font=b["font"])
+                y += asc + desc + 8
+            continue
+        text_w = draw_result.textlength(b["text"], font=b["font"])
+        x = (img.width - text_w) // 2
+        if b.get("glow"):
+            _draw_text_with_shadow(draw_result, (x, y), b["text"],
+                                   b["font"], b["fill"])
         else:
-            d.text(pos, text, fill=color, font=font)
+            draw_result.text((x, y), b["text"], fill=b["fill"], font=b["font"])
+        asc, desc = b["font"].getmetrics()
+        y += asc + desc
 
-    if layout == 'center':
-        base_y = img.height // 2 - 80
-
-        bbox = draw_result.textbbox((0, 0), decoration, font=font_small)
-        dec_w = bbox[2] - bbox[0]
-        draw_styled(draw_result,
-                    ((img.width - dec_w) // 2, base_y - 30),
-                    decoration, font_small, "#FFD700")
-
-        _draw_decorative_line(draw_result, img.width // 2, base_y + 10,
-                              img.width, (255, 215, 0, 200))
-
-        draw_styled(draw_result, (cx, base_y + 30),
-                    greeting_text, font_large, "#FFFFFF")
-
-        _draw_decorative_line(draw_result, img.width // 2,
-                              base_y + 130, img.width, (255, 215, 0, 200))
-
-        draw_styled(draw_result, (name_cx, base_y + 150),
-                    employee_name, font_medium, "#FFD700")
-
-        bbox = draw_result.textbbox((0, 0), employee_name, font=font_small)
-        dec2_w = bbox[2] - bbox[0]
-        draw_styled(draw_result,
-                    ((img.width - dec2_w) // 2, base_y + 200),
-                    decoration, font_small, "#FFD700")
-
-    elif layout == 'bottom':
-        bar_height = 300
-        draw_result.rectangle(
-            [(0, img.height - bar_height), (img.width, img.height)],
-            fill=(0, 0, 0, 180),
-        )
-
-        bbox = draw_result.textbbox((0, 0), greeting_text, font=font_large)
-        text_y = img.height - bar_height + 30
-        draw_styled(draw_result, (cx, text_y),
-                    greeting_text, font_large, "#FFFFFF")
-
-        _draw_decorative_line(draw_result, img.width // 2,
-                              text_y + 100, img.width, (255, 215, 0, 200))
-
-        draw_styled(draw_result, (name_cx, text_y + 120),
-                    employee_name, font_medium, "#FFD700")
-
-        draw_styled(draw_result,
-                    ((img.width - text_w) // 2, text_y + 180),
-                    decoration, font_small, "#FFFFFF")
-
-    elif layout == 'top':
-        bar_height = 280
-        draw_result.rectangle(
-            [(0, 0), (img.width, bar_height)],
-            fill=(0, 0, 0, 160),
-        )
-
-        bbox = draw_result.textbbox((0, 0), greeting_text, font=font_large)
-        draw_styled(draw_result, (cx, 20),
-                    greeting_text, font_large, "#FFFFFF")
-
-        _draw_decorative_line(draw_result, img.width // 2,
-                              120, img.width, (255, 215, 0, 200))
-
-        draw_styled(draw_result, (name_cx, 140),
-                    employee_name, font_medium, "#FFD700")
-
-        draw_styled(draw_result,
-                    ((img.width - text_w) // 2, 200),
-                    decoration, font_small, "#FFFFFF")
+    _draw_frame(draw_result, img.width, img.height)
 
     if output_path is None:
         safe_name = re.sub(r'[^\w\s-]', '', employee_name).strip().replace(' ', '_')
-        filename = f"greeting_{safe_name}.jpg"
-        output_path = settings.greeting_dir / filename
+        tag = f"_{age}" if age else ""
+        output_path = settings.greeting_dir / f"greeting_{safe_name}{tag}.jpg"
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)

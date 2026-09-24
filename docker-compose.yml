@@ -1,9 +1,18 @@
 services:
   corp-site:
-    build: .
+    build:
+      context: .
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
     ports:
-      - "8800:8800"
+      # Хост-порт настраивается переменной APP_PORT (по умолчанию 8822).
+      # Внутри контейнера сервис слушает 8800 (см. Dockerfile/healthcheck).
+      - "${APP_PORT:-8822}:8800"
     volumes:
+      # Монтируем актуальные данные и поздравления с хоста.
+      # Владелец процессов в образе = UID/GID,
+      # поэтому контейнер пишет в эти каталоги без ошибок прав.
       - ./data:/app/data
       - ./app/static/greetings:/app/app/static/greetings
     environment:

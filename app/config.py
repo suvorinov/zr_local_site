@@ -39,7 +39,13 @@ class Settings(BaseSettings):
     timezone: str = "Europe/Moscow"
     weather_lat: float = 54.6269
     weather_lon: float = 39.6916
+    weather_refresh_minutes: int = 60
+    weather_openweathermap_key: str = ""
+    weather_wttr_city: str = "Ryazan"
     ticker_speed: int = 40
+    news_enabled: bool = True
+    news_fetch_minutes: int = 15
+    news_max_items: int = 6
     admin_username: str = ""
     admin_password: str = ""
 

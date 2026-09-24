@@ -1,7 +1,15 @@
 {% extends "base.html" %}
 {% block extra_head %}
+<link rel="stylesheet" href="/static/fonts/inter/inter.css">
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800;900&display=swap');
+    :root {
+        --bg: #e8e8e8;
+        --ink: #1a1a2e;
+        --muted: #8a8a8a;
+        --line: #d9d9d9;
+        --accent: #e94560;
+        --info: #4a90d9;
+    }
 
     html, body {
         height: 100%;
@@ -12,11 +20,15 @@
         display: flex;
         flex-direction: column;
         height: 100vh;
-        background: #e8e8e8;
-        color: #222;
+        background: var(--bg);
+        color: var(--ink);
         font-family: 'Inter', 'Segoe UI', sans-serif;
         position: relative;
         overflow: hidden;
+        transition: filter 1s ease;
+    }
+    .informer.night {
+        filter: brightness(0.55) saturate(0.9);
     }
 
     /* ===== Шапка: название | часы | дата ===== */
@@ -37,7 +49,7 @@
         font-weight: 800;
         letter-spacing: 0.02em;
         line-height: 1.15;
-        color: #1a1a2e;
+        color: var(--ink);
     }
 
     .time-block {
@@ -51,24 +63,16 @@
         font-size: clamp(3rem, 7vw, 6.5rem);
         font-weight: 700;
         letter-spacing: 0.04em;
-        color: #111;
+        color: var(--ink);
         line-height: 1;
         font-variant-numeric: tabular-nums;
     }
-    .time-seconds {
-        font-size: clamp(1.2rem, 2.5vw, 2.2rem);
-        font-weight: 300;
-        color: #888;
-        min-width: 2.4em;
-        font-variant-numeric: tabular-nums;
-    }
-
     .date-display {
         flex: 1;
         min-width: 0;
         text-align: right;
         font-size: clamp(1rem, 1.8vw, 1.6rem);
-        color: #444;
+        color: var(--muted);
         letter-spacing: 0.03em;
         font-weight: 400;
     }
@@ -88,21 +92,22 @@
 
     .slide {
         display: none;
-        text-align: center;
-        max-width: 92vw;
-        max-height: 100%;
+        width: 100%;
+        height: 100%;
+        align-items: center;
+        justify-content: center;
         animation: fadeIn 0.8s ease;
     }
-    .slide.active { display: block; }
+    .slide.active { display: flex; }
 
     @keyframes fadeIn {
-        from { opacity: 0; transform: scale(0.96); }
-        to { opacity: 1; transform: scale(1); }
+        from { opacity: 0; transform: translateY(14px); }
+        to { opacity: 1; transform: translateY(0); }
     }
 
     .slide img {
-        max-width: 92vw;
-        max-height: calc(100vh - 330px);
+        max-width: 100%;
+        max-height: 100%;
         border-radius: 12px;
         box-shadow: 0 4px 30px rgba(0,0,0,0.15);
     }
@@ -116,7 +121,7 @@
     .slide.holiday.active { display: flex; }
 
     .holiday-card {
-        background: linear-gradient(135deg, #1a2a6c 0%, #b21f1f 100%);
+        background: linear-gradient(135deg, #232a4d 0%, #7c3a4f 100%);
         color: #fff;
         border-radius: 20px;
         padding: clamp(2rem, 5vh, 4rem) clamp(3rem, 6vw, 6rem);
@@ -152,7 +157,7 @@
 
     .info-title {
         font-size: clamp(0.9rem, 1.6vw, 1.4rem);
-        color: #888;
+        color: var(--muted);
         text-transform: uppercase;
         letter-spacing: 0.1em;
         margin-bottom: 1rem;
@@ -160,28 +165,60 @@
     .info-name {
         font-size: clamp(2rem, 5vw, 4.5rem);
         font-weight: 800;
-        color: #1a1a2e;
+        color: var(--ink);
         line-height: 1.15;
     }
     .info-sub {
         font-size: clamp(1rem, 2vw, 1.8rem);
-        color: #555;
+        color: var(--muted);
         margin-top: 0.8rem;
     }
     .info-day {
         font-weight: 700;
-        color: #1a1a2e;
+        color: var(--ink);
+    }
+
+    /* Новостной инфо-блок (RSS ТАСС) */
+    .news-head {
+        display: flex;
+        justify-content: center;
+        align-items: baseline;
+        gap: 0.8rem;
+        margin-bottom: 0.9rem;
+    }
+    .news-cat {
+        font-size: clamp(0.75rem, 1.3vw, 1.1rem);
+        color: var(--accent);
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+    }
+    .news-time {
+        font-size: clamp(0.75rem, 1.3vw, 1.1rem);
+        color: var(--muted);
+        white-space: nowrap;
+    }
+    .news-title {
+        font-size: clamp(1.3rem, 3vw, 2.6rem);
+        font-weight: 700;
+        color: var(--ink);
+        line-height: 1.3;
+        margin-bottom: 0.9rem;
+    }
+    .news-desc {
+        font-size: clamp(1rem, 1.9vw, 1.6rem);
+        color: var(--muted);
+        line-height: 1.4;
     }
     .quote-text {
         font-size: clamp(1.4rem, 3.2vw, 2.8rem);
         font-style: italic;
         font-weight: 600;
-        color: #1a1a2e;
+        color: var(--ink);
         line-height: 1.35;
     }
     .quote-author {
         font-size: clamp(1rem, 1.8vw, 1.6rem);
-        color: #888;
+        color: var(--muted);
         margin-top: 1rem;
     }
 
@@ -189,27 +226,14 @@
     .quote-day {
         font-size: clamp(2.5rem, 7vw, 6rem);
         font-weight: 800;
-        color: #1a1a2e;
+        color: var(--ink);
         line-height: 1.1;
     }
     .quote-note {
         font-size: clamp(1.2rem, 2.5vw, 2.2rem);
         font-weight: 400;
-        color: #888;
+        color: var(--muted);
         margin-top: 0.8rem;
-    }
-
-    /* Счётчик слайдов — внутри основного блока */
-    .counter {
-        position: absolute;
-        top: 10px;
-        right: 16px;
-        background: rgba(0,0,0,0.15);
-        color: #666;
-        padding: 5px 10px;
-        border-radius: 6px;
-        font-size: 0.75rem;
-        z-index: 10;
     }
 
     /* ===== Прогноз погоды ===== */
@@ -219,13 +243,19 @@
     }
     .weather-title {
         font-size: clamp(0.7rem, 1.1vw, 0.95rem);
-        color: #888;
+        color: var(--muted);
         text-transform: uppercase;
         letter-spacing: 0.12em;
         text-align: center;
         margin-bottom: 0.5rem;
     }
-    .weather-title span { color: #e94560; font-weight: 600; }
+    .weather-pressure {
+        color: var(--muted);
+        font-weight: 600;
+        margin-left: 0.6rem;
+        text-transform: none;
+        letter-spacing: 0.02em;
+    }
 
     .forecast {
         display: grid;
@@ -241,21 +271,15 @@
         justify-content: center;
         gap: 0.4rem;
         background: #fff;
-        border: 1px solid #ddd;
+        border: 1px solid var(--line);
         border-radius: 12px;
         padding: 0.6rem 0.3rem;
-        transition: all 0.2s ease;
         height: 100%;
         box-sizing: border-box;
     }
-    .hour-card:hover {
-        border-color: #e94560;
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-    }
     .hour-card .hour {
         font-size: clamp(0.8rem, 1.3vw, 1.1rem);
-        color: #888;
+        color: var(--muted);
         font-weight: 500;
     }
     .hour-card .emoji {
@@ -265,17 +289,17 @@
     .hour-card .temp {
         font-size: clamp(1.2rem, 2.4vw, 2rem);
         font-weight: 700;
-        color: #111;
+        color: var(--ink);
     }
     .hour-card .precip {
         font-size: clamp(0.65rem, 1vw, 0.85rem);
-        color: #4a90d9;
+        color: var(--info);
         font-weight: 500;
     }
 
     .no-weather {
         text-align: center;
-        color: #999;
+        color: var(--muted);
         font-size: 1rem;
         padding: 1.5rem;
         grid-column: 1 / -1;
@@ -284,20 +308,20 @@
     /* ===== Бегущая строка ===== */
     .ticker-bar {
         width: 100%;
-        background: #1a1a2e;
+        background: var(--ink);
         color: #fff;
         overflow: hidden;
         flex-shrink: 0;
-        height: 40px;
+        height: 56px;
         display: flex;
         align-items: center;
         position: relative;
     }
 
     .ticker-label {
-        background: #e94560;
+        background: var(--accent);
         color: #fff;
-        font-size: 0.75rem;
+        font-size: 0.85rem;
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.08em;
@@ -323,7 +347,7 @@
         align-items: center;
         white-space: nowrap;
         animation: ticker-scroll linear infinite;
-        font-size: 0.95rem;
+        font-size: 1.1rem;
         font-weight: 400;
         will-change: transform;
     }
@@ -341,7 +365,7 @@
 
     .ticker-group .ticker-separator {
         display: inline;
-        color: #e94560;
+        color: var(--accent);
         padding: 0 0.5rem;
     }
 
@@ -351,29 +375,10 @@
     }
 
     .ticker-empty {
-        color: #666;
+        color: var(--muted);
         font-size: 0.85rem;
         padding-left: 1rem;
         font-style: italic;
-    }
-
-    /* ===== Навигация ===== */
-    .nav-link {
-        position: fixed;
-        bottom: 52px;
-        right: 20px;
-        background: rgba(233, 69, 96, 0.85);
-        color: #fff;
-        padding: 8px 16px;
-        border-radius: 6px;
-        font-size: 0.8rem;
-        z-index: 100;
-        text-decoration: none;
-        transition: background 0.2s;
-    }
-    .nav-link:hover {
-        background: rgba(233, 69, 96, 1);
-        text-decoration: none;
     }
 
     /* ===== Адаптив =====
@@ -396,14 +401,13 @@
         .org-name { font-size: clamp(1rem, 1.8vw, 1.5rem); }
         .time-display { font-size: clamp(2.5rem, 6vw, 4rem); }
         .date-display { font-size: clamp(0.9rem, 1.4vw, 1.2rem); }
-        .slide img { max-height: calc(100vh - 280px); }
         .holiday-card { padding: 1.5rem 2rem; }
         .holiday-greeting { font-size: clamp(1.4rem, 3vw, 2.5rem); }
         .holiday-emoji { font-size: clamp(2rem, 5vw, 4rem); margin-bottom: 0.5rem; }
         .forecast { height: clamp(80px, 16vh, 140px); }
         .weather-title { margin-bottom: 0.3rem; }
-        .ticker-bar { height: 32px; }
-        .ticker-content { font-size: 0.8rem; }
+        .ticker-bar { height: 44px; }
+        .ticker-content { font-size: 0.95rem; }
         .quote-day { font-size: clamp(2rem, 5vw, 3.5rem); }
         .quote-note { font-size: clamp(1rem, 2vw, 1.5rem); margin-top: 0.4rem; }
         .info-name { font-size: clamp(1.6rem, 3.5vw, 2.8rem); }
@@ -414,7 +418,6 @@
 
     @media (max-height: 600px) {
         .time-display { font-size: clamp(2rem, 5vw, 3rem); }
-        .time-seconds { font-size: 1rem; }
         .hour-card { padding: 0.3rem; }
         .hour-card .emoji { font-size: 1.4rem; }
         .hour-card .temp { font-size: 1rem; }
@@ -429,60 +432,58 @@
         <div class="org-name">{{ org_name }}</div>
         <div class="time-block">
             <span class="time-display" id="clock">--:--</span>
-            <span class="time-seconds" id="seconds">--</span>
         </div>
-        <div class="date-display">{{ today_short }}</div>
+        <div class="date-display" id="date-line">{{ today_short }}</div>
     </header>
 
-    <!-- Основной блок: именинники или инфо-ротация -->
+    <!-- Основной блок: карточки именинников/праздников в общей ротации с инфо-блоками -->
     <main class="items-section">
-        {% if items %}
-            {% for item in items %}
-                {% if item.type == 'holiday' %}
-                <div class="slide holiday{% if loop.first %} active{% endif %}" data-index="{{ loop.index0 }}">
-                    <div class="holiday-card">
-                        <div class="holiday-emoji">{{ item.emoji }}</div>
-                        <div class="holiday-greeting">{{ item.greeting }}</div>
-                        <div class="holiday-name">{{ item.name }}</div>
-                    </div>
+        {% for item in items %}
+            {% if item.type == 'holiday' %}
+            <div class="slide holiday{% if loop.first %} active{% endif %}" data-index="{{ loop.index0 }}">
+                <div class="holiday-card">
+                    <div class="holiday-emoji">{{ item.emoji }}</div>
+                    <div class="holiday-greeting">{{ item.greeting }}</div>
+                    <div class="holiday-name">{{ item.name }}</div>
                 </div>
-                {% else %}
-                <div class="slide{% if loop.first %} active{% endif %}" data-index="{{ loop.index0 }}">
-                    <img src="{{ item.image_path }}" alt="{{ item.text }}">
-                </div>
-                {% endif %}
-            {% endfor %}
-            {% if items|length > 1 %}
-            <div class="counter" id="counter">1 / {{ items|length }}</div>
-            {% endif %}
-        {% else %}
-            {% if upcoming_birthdays %}
-            <div class="info-block active" data-info="birthday">
-                <div class="info-title">&#127874; Ближайшие дни рождения</div>
-                {% for day in upcoming_birthdays %}
-                <div class="info-sub"><span class="info-day">{{ day.label }}:</span> {{ day.names|join(', ') }}</div>
-                {% endfor %}
-            </div>
-            <div class="info-block" data-info="quote">
-                <div class="quote-text" id="quote-text">&laquo;{{ quote_text }}&raquo;</div>
-                <div class="quote-author" id="quote-author">&mdash; {{ quote_author }}</div>
             </div>
             {% else %}
-            <div class="info-block active" data-info="quote">
-                <div class="quote-text" id="quote-text">&laquo;{{ quote_text }}&raquo;</div>
-                <div class="quote-author" id="quote-author">&mdash; {{ quote_author }}</div>
+            <div class="slide{% if loop.first %} active{% endif %}" data-index="{{ loop.index0 }}">
+                <img src="{{ item.image_path }}" alt="{{ item.text }}">
             </div>
             {% endif %}
-            <div class="info-block" data-info="date">
-                <div class="quote-day">{{ today }}</div>
-                <div class="quote-note">Хорошего дня!</div>
-            </div>
+        {% endfor %}
+        {% if upcoming_birthdays %}
+        <div class="info-block{% if not items %} active{% endif %}" data-info="birthday">
+            <div class="info-title">Ближайшие дни рождения</div>
+            {% for day in upcoming_birthdays %}
+            <div class="info-sub"><span class="info-day">{{ day.label }}:</span> {{ day.names|join(', ') }}</div>
+            {% endfor %}
+        </div>
         {% endif %}
+        <div class="info-block{% if not items and not upcoming_birthdays %} active{% endif %}" data-info="quote">
+            <div class="quote-text" id="quote-text">&laquo;{{ quote_text }}&raquo;</div>
+            <div class="quote-author" id="quote-author">&mdash; {{ quote_author }}</div>
+        </div>
+        {% if news %}
+        <div class="info-block" data-info="news">
+            <div class="news-head">
+                <span class="news-cat" id="news-cat"></span>
+                <span class="news-time" id="news-time"></span>
+            </div>
+            <div class="news-title" id="news-title"></div>
+            <div class="news-desc" id="news-desc"></div>
+        </div>
+        {% endif %}
+        <div class="info-block" data-info="date">
+            <div class="quote-day" id="date-big">{{ today }}</div>
+            <div class="quote-note">Хорошего дня!</div>
+        </div>
     </main>
 
     <!-- Прогноз погоды -->
     <section class="weather-section">
-        <div class="weather-title"><span>&#9728;</span> Прогноз на сегодня <span>&#9728;</span></div>
+        <div class="weather-title">Погода{% if pressure_mm %}<span class="weather-pressure">{{ pressure_mm }} мм рт. ст.</span>{% endif %}</div>
         <div class="forecast" id="forecast-grid">
             {% if forecast %}
             {% for h in forecast %}
@@ -503,20 +504,20 @@
 
     <!-- Бегущая строка с объявлениями -->
     <div class="ticker-bar">
-        <div class="ticker-label">&#128227; Объявления</div>
+        <div class="ticker-label">Объявления</div>
         <div class="ticker-track">
             {% if ticker_items %}
             <div class="ticker-content" id="ticker">
                 <div class="ticker-group">
                     {% for text in ticker_items %}
                         <span class="ticker-item">{{ text }}</span>
-                        {% if not loop.last %}<span class="ticker-separator">&#9830;</span>{% endif %}
+                        {% if not loop.last %}<span class="ticker-separator">&#183;</span>{% endif %}
                     {% endfor %}
                 </div>
                 <div class="ticker-group">
                     {% for text in ticker_items %}
                         <span class="ticker-item">{{ text }}</span>
-                        {% if not loop.last %}<span class="ticker-separator">&#9830;</span>{% endif %}
+                        {% if not loop.last %}<span class="ticker-separator">&#183;</span>{% endif %}
                     {% endfor %}
                 </div>
             </div>
@@ -527,10 +528,9 @@
     </div>
 </div>
 
-<a class="nav-link" href="/admin">&#9881; Админка</a>
-
 <script id="forecast-data" type="application/json">{{ forecast_all|safe }}</script>
 <script id="quotes-data" type="application/json">{{ quotes_json|safe }}</script>
+<script id="news-data" type="application/json">{{ news_json|safe }}</script>
 
 <script>
 (function() {
@@ -539,34 +539,14 @@
     function updateClock() {
         var now = new Date();
         document.getElementById('clock').textContent = pad(now.getHours()) + ':' + pad(now.getMinutes());
-        document.getElementById('seconds').textContent = pad(now.getSeconds());
     }
     updateClock();
     setInterval(updateClock, 1000);
 
-    /* ===== Ротация слайдов ===== */
-    var slides = document.querySelectorAll('.slide');
-    var counter = document.getElementById('counter');
-    var current = 0;
-    var total = slides.length;
+    /* ===== Общая ротация: карточки именинников и инфо-блоки ===== */
+    var rotatables = document.querySelectorAll('.slide, .info-block');
     var ROTATION_SECONDS = {{ rotation_seconds if rotation_seconds is defined else 60 }};
 
-    function showSlide(index) {
-        slides.forEach(function(s) { s.classList.remove('active'); });
-        slides[index].classList.add('active');
-        if (counter) counter.textContent = (index + 1) + ' / ' + total;
-    }
-
-    if (total > 1) {
-        setInterval(function() {
-            current = (current + 1) % total;
-            showSlide(current);
-        }, ROTATION_SECONDS * 1000);
-    }
-
-    /* ===== Ротация инфо-блоков (именинников нет) ===== */
-    var infoBlocks = document.querySelectorAll('.info-block');
-    var infoCurrent = 0;
     var quotesData = (function() {
         var el = document.getElementById('quotes-data');
         try { return JSON.parse(el.textContent); } catch(e) { return []; }
@@ -605,14 +585,50 @@
         setRandomQuote();
     }
 
-    if (infoBlocks.length > 1) {
-        var EMPTY_SECONDS = {{ empty_rotation_seconds }};
+    var current = [].slice.call(rotatables).findIndex(function(el) {
+        return el.classList.contains('active');
+    });
+    if (current < 0) current = 0;
+
+    function activateSlot(index) {
+        rotatables.forEach(function(s) { s.classList.remove('active'); });
+        var el = rotatables[index];
+        el.classList.add('active');
+        if (el.getAttribute && el.getAttribute('data-info') === 'quote') setRandomQuote();
+    }
+
+    if (rotatables.length > 1) {
         setInterval(function() {
-            infoBlocks[infoCurrent].classList.remove('active');
-            infoCurrent = (infoCurrent + 1) % infoBlocks.length;
-            if (infoBlocks[infoCurrent].getAttribute('data-info') === 'quote') setRandomQuote();
-            infoBlocks[infoCurrent].classList.add('active');
-        }, EMPTY_SECONDS * 1000);
+            current = (current + 1) % rotatables.length;
+            activateSlot(current);
+        }, ROTATION_SECONDS * 1000);
+    }
+
+    /* ===== Ротация новостей внутри своего инфо-блока ===== */
+    var newsItems = (function() {
+        var el = document.getElementById('news-data');
+        try { return JSON.parse(el.textContent); } catch(e) { return []; }
+    })();
+    var newsCatEl = document.getElementById('news-cat');
+    var newsTimeEl = document.getElementById('news-time');
+    var newsTitleEl = document.getElementById('news-title');
+    var newsDescEl = document.getElementById('news-desc');
+    var newsIdx = 0;
+
+    function showNewsItem() {
+        if (!newsTitleEl || newsItems.length === 0) return;
+        var n = newsItems[newsIdx % newsItems.length];
+        if (newsCatEl) newsCatEl.textContent = n.category;
+        if (newsTimeEl) newsTimeEl.textContent = n.published_label;
+        newsTitleEl.textContent = n.title;
+        newsDescEl.textContent = n.description || '';
+    }
+    showNewsItem();
+    if (newsItems.length > 1) {
+        setInterval(function() {
+            newsIdx = (newsIdx + 1) % newsItems.length;
+            showNewsItem();
+        }, 9000);
     }
 
     /* ===== Прогноз погоды (обновление каждый час) ===== */
@@ -682,6 +698,38 @@
         }
         window.addEventListener('load', animateTicker);
     }
+
+    /* ===== Дата: обновление при смене суток ===== */
+    var WEEKDAYS = ['понедельник','вторник','среда','четверг','пятница','суббота','воскресенье'];
+    var WEEKDAYS_SHORT = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+    var MONTHS_RU = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+
+    function updateDateLine() {
+        var d = new Date();
+        var wd = (d.getDay() + 6) % 7;
+        var dateLine = document.getElementById('date-line');
+        var dateBig = document.getElementById('date-big');
+        if (dateLine) dateLine.textContent = WEEKDAYS_SHORT[wd] + ', ' + pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + '.' + d.getFullYear();
+        if (dateBig) dateBig.textContent = WEEKDAYS[wd].charAt(0).toUpperCase() + WEEKDAYS[wd].slice(1) + ', ' + d.getDate() + ' ' + MONTHS_RU[d.getMonth()] + ' ' + d.getFullYear();
+    }
+
+    function scheduleDateUpdate() {
+        updateDateLine();
+        var now = new Date();
+        var next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+        setTimeout(scheduleDateUpdate, next - now);
+    }
+    setTimeout(scheduleDateUpdate, 0);
+
+    /* ===== Ночная приглушённость (22:00–07:00) ===== */
+    var informer = document.querySelector('.informer');
+    function applyNightMode() {
+        if (!informer) return;
+        var h = new Date().getHours();
+        informer.classList.toggle('night', h >= 22 || h < 7);
+    }
+    applyNightMode();
+    setInterval(applyNightMode, 5 * 60 * 1000);
 })();
 </script>
 {% endblock %}

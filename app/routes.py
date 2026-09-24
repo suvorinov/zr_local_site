@@ -38,12 +38,15 @@ from app.db import (
     search_employees,
     update_announcement,
 )
-from app.image_gen import generate_greeting
+from app.feed import get_news_items
+from app.image_gen import generate_greeting, is_jubilee_age
 from app.models import EmployeeCreate
 from app.weather import get_all_forecast, get_forecast
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 templates = Jinja2Templates(directory="app/templates")
 
@@ -108,37 +111,70 @@ templates.env.filters["markdown"] = _markdownify
 STATIC_URL = "/static"
 
 
+def _cleanup_old_greetings(safe_name: str, current: Path) -> None:
+    """Удаляет устаревшие открытки сотрудника (например, прошлого возраста).
+
+    Args:
+        safe_name: Безопасное имя файла сотрудника.
+        current: Путь к актуальной открытке, которую нельзя удалять.
+    """
+    for old in settings.greeting_dir.glob(f"greeting_{safe_name}*.jpg"):
+        if old.resolve() != Path(current).resolve():
+            try:
+                old.unlink(missing_ok=True)
+                logger.info("Удалена устаревшая открытка: %s", old.name)
+            except OSError as e:
+                logger.warning("Не удалось удалить %s: %s", old.name, e)
+
+
 def _get_birthday_items() -> list[dict]:
     """Собирает поздравления именинников для показа карточками.
 
     Если изображение для именинника ещё не сгенерировано —
-    создаёт его на лету.
+    создаёт его на лету с учётом пола и возраста (юбилей).
 
     Returns:
         Список элементов типа birthday для ротации.
     """
     items: list[dict] = []
+    today = timeutils.today()
 
     birthday_employees = get_birthday_employees()
     for emp in birthday_employees:
         safe_name = re.sub(r'[^\w\s-]', '', emp['name']).strip().replace(' ', '_')
-        greeting_name = f"greeting_{safe_name}.jpg"
+        age = None
+        try:
+            bd = date.fromisoformat(emp["birthday"])
+            age = today.year - bd.year - ((today.month, today.day) < (bd.month, bd.day))
+        except (ValueError, TypeError):
+            pass
+
+        tag = f"_{age}" if age else ""
+        greeting_name = f"greeting_{safe_name}{tag}.jpg"
         greeting_path = settings.greeting_dir / greeting_name
         if not greeting_path.exists():
             try:
                 abs_path = generate_greeting(
                     employee_name=emp["name"],
                     gender=emp["gender"],
+                    age=age,
                 )
                 log_greeting(emp["id"], abs_path)
                 greeting_path = Path(abs_path)
-                logger.info("Поздравление создано на лету для %s", emp["name"])
+                logger.info("Поздравление создано для %s", emp["name"])
+                _cleanup_old_greetings(safe_name, greeting_path)
             except Exception as e:
                 logger.error("Ошибка генерации для %s: %s", emp["name"], e)
                 continue
+
+        if is_jubilee_age(age):
+            text = f"С Юбилеем, {emp['name']}!"
+        else:
+            text = f"С Днём Рождения, {emp['name']}!"
+
         items.append({
             "type": "birthday",
-            "text": f"С Днём Рождения, {emp['name']}!",
+            "text": text,
             "image_path": f"{STATIC_URL}/greetings/{greeting_path.name}",
             "employee_name": emp["name"],
         })
@@ -163,7 +199,7 @@ def _get_holiday_items(today: date | None = None) -> list[dict]:
     """
     global _HOLIDAYS_CACHE
     if _HOLIDAYS_CACHE is None:
-        holidays_file = Path(__file__).resolve().parent / "holidays.json"
+        holidays_file = _DATA_DIR / "holidays.json"
         try:
             raw = json.loads(holidays_file.read_text(encoding="utf-8"))
             _HOLIDAYS_CACHE = raw if isinstance(raw, list) else []
@@ -213,7 +249,7 @@ def _get_quotes() -> list[dict]:
     """
     global _QUOTES_CACHE
     if _QUOTES_CACHE is None:
-        quotes_file = Path(__file__).resolve().parent / "quotes.json"
+        quotes_file = _DATA_DIR / "quotes.json"
         try:
             raw = json.loads(quotes_file.read_text(encoding="utf-8"))
             if not isinstance(raw, list) or not raw:
@@ -314,6 +350,15 @@ async def index(request: Request):
     next_birthdays = _get_upcoming_birthdays(horizon=3)
     quotes = _get_quotes()
     quote = random.choice(quotes)
+    news = get_news_items()
+
+    forecast = get_forecast()
+    forecast_all = get_all_forecast()
+    pressure_mm = (
+        forecast[0]["pressure_mm"]
+        if forecast and forecast[0].get("pressure_mm") is not None
+        else None
+    )
 
     ctx: dict = {
         "title": settings.app_title,
@@ -326,8 +371,9 @@ async def index(request: Request):
             f"{days_ru_short[now.weekday()]}, "
             f"{now.day:02d}.{now.month:02d}.{now.year}"
         ),
-        "forecast": get_forecast(),
-        "forecast_all": json.dumps(get_all_forecast(), ensure_ascii=False),
+        "forecast": forecast,
+        "forecast_all": json.dumps(forecast_all, ensure_ascii=False),
+        "pressure_mm": pressure_mm,
         "items": items,
         "ticker_items": ticker_items,
         "ticker_speed": settings.ticker_speed,
@@ -337,9 +383,14 @@ async def index(request: Request):
         "quote_text": quote["text"],
         "quote_author": quote["author"],
         "quotes_json": json.dumps(quotes, ensure_ascii=False),
+        "news": news,
+        "news_json": json.dumps(news, ensure_ascii=False),
     }
 
-    return templates.TemplateResponse(request, "informer.html", ctx)
+    return templates.TemplateResponse(
+        request, "informer.html", ctx,
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+    )
 
 
 @router.get("/admin", response_class=HTMLResponse)

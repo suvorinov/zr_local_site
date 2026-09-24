@@ -66,13 +66,15 @@ docker compose up -d --build
 │   ├── csrf.py          # CSRF-защита форм
 │   ├── scheduler.py     # Планировщик дней рождений
 │   ├── timeutils.py     # Дата/время в часовом поясе CORP_TIMEZONE
-│   ├── image_gen.py     # Генерация изображений
+│   ├── image_gen.py     # Генерация открыток (пол, юбилей)
 │   ├── weather.py       # Прогноз погоды с кэшем
-│   ├── quotes.json      # Цитаты для инфо-ротации (редактируемый)
-│   ├── holidays.json    # Праздники для слайд-поздравлений (редактируемый)
 │   ├── templates/       # Jinja2 шаблоны
-│   └── static/          # CSS, фоны, поздравления
-├── data/                # SQLite БД, кэш погоды
+│   └── static/          # CSS, фоны, шрифты, поздравления
+├── data/
+│   ├── corp_site.db     # SQLite БД
+│   ├── weather_cache.json  # Кэш прогноза погоды
+│   ├── quotes.json      # Цитаты для инфо-ротации (редактируемый)
+│   └── holidays.json    # Праздники для слайд-поздравлений (редактируемый)
 ├── nginx.conf           # Пример конфигурации nginx для HTTPS
 ├── Dockerfile
 ├── docker-compose.yml

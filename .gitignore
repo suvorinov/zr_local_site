@@ -6,6 +6,10 @@ data/*.db
 data/*.db-wal
 data/*.db-shm
 data/weather_cache.json
+data/news_cache.json
+# Персональные данные сотрудников (источник импорта) не храним в git
+data/staff.txt
+data/staff.xls
 app/static/greetings/*
 !app/static/greetings/.gitkeep
 .csrf_secret
