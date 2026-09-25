@@ -322,7 +322,7 @@ def _get_upcoming_birthdays(horizon: int = 3) -> list[dict]:
 
 
 @router.get("/", response_class=HTMLResponse)
-async def index(request: Request):
+def index(request: Request):
     """Главная страница-информер.
 
     Показывает informer.html с датой, временем, погодой,
@@ -386,13 +386,13 @@ async def index(request: Request):
 
 
 @router.get("/admin", response_class=HTMLResponse)
-async def admin_redirect(_: None = Depends(verify_admin)):
+def admin_redirect(_: None = Depends(verify_admin)):
     """Редирект на раздел сотрудников."""
     return RedirectResponse(url="/admin/employees")
 
 
 @router.get("/admin/employees", response_class=HTMLResponse)
-async def admin_employees(
+def admin_employees(
     request: Request,
     name: str = Query(default=""),
     birthday: str = Query(default=""),
@@ -427,7 +427,7 @@ async def admin_employees(
 
 
 @router.get("/admin/announcements", response_class=HTMLResponse)
-async def admin_announcements(
+def admin_announcements(
     request: Request,
     page: int = Query(default=1, ge=1),
     search_date_from: str = Query(default=""),
@@ -476,7 +476,7 @@ async def admin_announcements(
 
 
 @router.post("/admin/employees/add")
-async def add_employee_route(
+def add_employee_route(
     request: Request,
     name: str = Form(...),
     birthday: str = Form(...),
@@ -497,7 +497,7 @@ async def add_employee_route(
 
 
 @router.post("/admin/employees/{employee_id}/delete")
-async def delete_employee_route(
+def delete_employee_route(
     request: Request,
     employee_id: int,
     csrf_token: str = Form(default=""),
@@ -511,7 +511,7 @@ async def delete_employee_route(
 
 
 @router.post("/admin/announcements/add")
-async def add_announcement_route(
+def add_announcement_route(
     request: Request,
     _: None = Depends(verify_admin),
     csrf_token: str = Form(default=""),
@@ -535,7 +535,7 @@ async def add_announcement_route(
 
 
 @router.get("/admin/announcements/{announcement_id}/edit", response_class=HTMLResponse)
-async def edit_announcement_page(
+def edit_announcement_page(
     request: Request,
     announcement_id: int,
     _: None = Depends(verify_admin),
@@ -571,7 +571,7 @@ async def edit_announcement_page(
 
 
 @router.post("/admin/announcements/{announcement_id}/edit")
-async def edit_announcement_route(
+def edit_announcement_route(
     request: Request,
     announcement_id: int,
     _: None = Depends(verify_admin),
@@ -597,7 +597,7 @@ async def edit_announcement_route(
 
 
 @router.post("/admin/announcements/{announcement_id}/deactivate")
-async def deactivate_announcement_route(
+def deactivate_announcement_route(
     request: Request,
     announcement_id: int,
     csrf_token: str = Form(default=""),
@@ -611,7 +611,7 @@ async def deactivate_announcement_route(
 
 
 @router.post("/admin/announcements/{announcement_id}/delete")
-async def delete_announcement_route(
+def delete_announcement_route(
     request: Request,
     announcement_id: int,
     csrf_token: str = Form(default=""),
