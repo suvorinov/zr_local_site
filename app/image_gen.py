@@ -16,6 +16,7 @@ import logging
 import math
 import random
 import re
+from datetime import date
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
@@ -23,6 +24,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 from petrovich.enums import Case, Gender
 from petrovich.main import Petrovich
 
+from app import timeutils
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -394,6 +396,48 @@ def is_jubilee_age(age: int | None) -> bool:
     return age >= _JUBILEE_MIN_AGE and age % _JUBILEE_STEP == 0
 
 
+def compute_age(birthday: str | None, today: date | None = None) -> int | None:
+    """Вычисляет возраст сотрудника на сегодняшнюю дату.
+
+    Единая точка для расчёта возраста — используется планировщиком,
+    роутами и генерацией, чтобы возраст (и имя файла открытки) совпадали
+    между всеми потребителями.
+
+    Args:
+        birthday: Дата рождения в формате ГГГГ-ММ-ДД.
+        today: Опорная дата (по умолчанию — сегодня в часовом поясе приложения).
+
+    Returns:
+        Возраст или None, если дата рождения не задана/некорректна.
+    """
+    if not birthday:
+        return None
+    try:
+        bd = date.fromisoformat(birthday)
+    except (ValueError, TypeError):
+        return None
+    ref = today or timeutils.today()
+    return ref.year - bd.year - ((ref.month, ref.day) < (bd.month, bd.day))
+
+
+def greeting_filename(employee_name: str, age: int | None) -> Path:
+    """Возвращает путь к файлу открытки сотрудника.
+
+    Единая формула имени файла: планировщик и роуты должны использовать её,
+    чтобы не создавать дублирующие открытки с разными именами.
+
+    Args:
+        employee_name: ФИО сотрудника.
+        age: Возраст сотрудника (None — без возрастного тега).
+
+    Returns:
+        Путь в каталоге greetings.
+    """
+    safe_name = re.sub(r'[^\w\s-]', '', employee_name).strip().replace(' ', '_')
+    tag = f"_{age}" if age else ""
+    return settings.greeting_dir / f"greeting_{safe_name}{tag}.jpg"
+
+
 def _personal_name(full_name: str) -> str:
     """Возвращает имя и отчество из ФИО (слова 2 и 3).
 
@@ -600,9 +644,7 @@ def generate_greeting(
     _draw_frame(draw_result, img.width, img.height)
 
     if output_path is None:
-        safe_name = re.sub(r'[^\w\s-]', '', employee_name).strip().replace(' ', '_')
-        tag = f"_{age}" if age else ""
-        output_path = settings.greeting_dir / f"greeting_{safe_name}{tag}.jpg"
+        output_path = greeting_filename(employee_name, age)
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)

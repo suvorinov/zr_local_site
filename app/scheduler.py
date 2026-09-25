@@ -4,13 +4,14 @@
 """
 
 import logging
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.config import settings
 from app.db import get_birthday_employees, log_greeting
-from app.image_gen import generate_greeting
+from app.image_gen import compute_age, generate_greeting, greeting_filename
 from app.timeutils import now
 
 logger = logging.getLogger(__name__)
@@ -33,9 +34,15 @@ def check_birthdays():
 
     for emp in employees:
         try:
+            age = compute_age(emp.get("birthday"))
+            image_path = greeting_filename(emp["name"], age)
+            if Path(image_path).exists():
+                logger.info("Поздравление уже готово для %s", emp["name"])
+                continue
             image_path = generate_greeting(
                 employee_name=emp["name"],
                 gender=emp["gender"],
+                age=age,
             )
             log_greeting(emp["id"], image_path)
             logger.info("Поздравление создано для %s", emp["name"])

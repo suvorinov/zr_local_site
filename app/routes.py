@@ -39,7 +39,7 @@ from app.db import (
     update_announcement,
 )
 from app.feed import get_news_items
-from app.image_gen import generate_greeting, is_jubilee_age
+from app.image_gen import compute_age, generate_greeting, greeting_filename, is_jubilee_age
 from app.models import EmployeeCreate
 from app.weather import get_all_forecast, get_forecast
 
@@ -111,13 +111,14 @@ templates.env.filters["markdown"] = _markdownify
 STATIC_URL = "/static"
 
 
-def _cleanup_old_greetings(safe_name: str, current: Path) -> None:
+def _cleanup_old_greetings(employee_name: str, current: Path) -> None:
     """Удаляет устаревшие открытки сотрудника (например, прошлого возраста).
 
     Args:
-        safe_name: Безопасное имя файла сотрудника.
+        employee_name: ФИО сотрудника.
         current: Путь к актуальной открытке, которую нельзя удалять.
     """
+    safe_name = re.sub(r'[^\w\s-]', '', employee_name).strip().replace(' ', '_')
     for old in settings.greeting_dir.glob(f"greeting_{safe_name}*.jpg"):
         if old.resolve() != Path(current).resolve():
             try:
@@ -141,17 +142,8 @@ def _get_birthday_items() -> list[dict]:
 
     birthday_employees = get_birthday_employees()
     for emp in birthday_employees:
-        safe_name = re.sub(r'[^\w\s-]', '', emp['name']).strip().replace(' ', '_')
-        age = None
-        try:
-            bd = date.fromisoformat(emp["birthday"])
-            age = today.year - bd.year - ((today.month, today.day) < (bd.month, bd.day))
-        except (ValueError, TypeError):
-            pass
-
-        tag = f"_{age}" if age else ""
-        greeting_name = f"greeting_{safe_name}{tag}.jpg"
-        greeting_path = settings.greeting_dir / greeting_name
+        age = compute_age(emp.get("birthday"), today)
+        greeting_path = greeting_filename(emp["name"], age)
         if not greeting_path.exists():
             try:
                 abs_path = generate_greeting(
@@ -162,7 +154,7 @@ def _get_birthday_items() -> list[dict]:
                 log_greeting(emp["id"], abs_path)
                 greeting_path = Path(abs_path)
                 logger.info("Поздравление создано для %s", emp["name"])
-                _cleanup_old_greetings(safe_name, greeting_path)
+                _cleanup_old_greetings(emp["name"], greeting_path)
             except Exception as e:
                 logger.error("Ошибка генерации для %s: %s", emp["name"], e)
                 continue
