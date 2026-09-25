@@ -28,7 +28,8 @@ prepare: ## Создать рабочие каталоги и .env из прим
 	@test -f .env || { echo "Создаю .env из .env.example — задайте пароли и ключи!"; cp .env.example .env; }
 
 run: prepare ## Локальный запуск для разработки (порт 8800, автоперезагрузка)
-	$(PY) -m uvicorn app.main:app --host 0.0.0.0 --port 8800 --reload
+	$(PY) -m uvicorn app.main:app --host 0.0.0.0 --port 8800 --reload \
+		--reload-dir app --reload-exclude 'app/static/greetings/*'
 
 db-import: ## Импорт актуального персонала из data/staff.txt (БД пересобирается)
 	$(PY) import_staff.py --reset
