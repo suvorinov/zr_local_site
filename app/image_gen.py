@@ -340,13 +340,13 @@ def _draw_frame(draw: ImageDraw, width: int, height: int) -> None:
         width: Ширина изображения.
         height: Высота изображения.
     """
-    inset = 34
+    inset = 70
     gold = (255, 215, 0, 170)
     draw.rectangle([inset, inset, width - inset, height - inset],
                    outline=gold, width=3)
     draw.rectangle([inset + 10, inset + 10, width - inset - 10, height - inset - 10],
                    outline=(255, 215, 0, 70), width=1)
-    r = 9
+    r = 11
     for cx, cy in ((inset, inset), (width - inset, inset),
                    (inset, height - inset), (width - inset, height - inset)):
         draw.polygon(
@@ -424,7 +424,7 @@ def compute_age(birthday: str | None, today: date | None = None) -> int | None:
 # текста заголовка: имя файла получает суффикс __vN, планировщик/роуты увидят
 # «нового» файла нет и перегенерируют открытку, а _cleanup_old_greetings удалит
 # устаревшие версии.
-_GREETING_VERSION = 3
+_GREETING_VERSION = 4
 
 
 def greeting_filename(employee_name: str, age: int | None) -> Path:
