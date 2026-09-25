@@ -375,16 +375,21 @@ def add_announcement(
         return ann_id
 
 
+# Маркер «поле не передано» — нужен, чтобы None/пустая строка значили
+# «сбросить значение (NULL)», а не «не менять».
+_UNSET = object()
+
+
 def update_announcement(
     announcement_id: int,
-    title: str | None = None,
-    text: str | None = None,
-    date_from: date | None | str = None,
-    date_to: date | None | str = None,
-    priority: int | None = None,
-    category: str | None = None,
-    is_pinned: bool | None = None,
-    image_path: str | None | str = None,
+    title: str | None = _UNSET,
+    text: str | None = _UNSET,
+    date_from: date | None | str = _UNSET,
+    date_to: date | None | str = _UNSET,
+    priority: int | None = _UNSET,
+    category: str | None = _UNSET,
+    is_pinned: bool | None = _UNSET,
+    image_path: str | None = _UNSET,
 ) -> bool:
     """Обновляет объявление по ID.
 
@@ -392,43 +397,50 @@ def update_announcement(
         announcement_id: Идентификатор объявления.
         title: Новый заголовок.
         text: Новый текст.
-        date_from: Новая дата начала (None = сбросить, omit = не менять).
-        date_to: Новая дата окончания.
+        date_from: Новая дата начала (None или пустая строка = сбросить).
+        date_to: Новая дата окончания (None или пустая строка = сбросить).
         priority: Новый приоритет.
         category: Новая категория.
         is_pinned: Новый флаг закрепления.
-        image_path: Новый путь к изображению.
+        image_path: Новый путь к изображению (None или пустая строка = сбросить).
 
     Returns:
         True если запись обновлена, иначе False.
     """
+    def _as_iso(value) -> str | None:
+        if not value:
+            return None
+        if isinstance(value, str):
+            return value
+        return value.isoformat()
+
     fields: list[str] = []
     params: list = []
 
-    if title is not None:
+    if title is not _UNSET:
         fields.append("title = ?")
         params.append(title)
-    if text is not None:
+    if text is not _UNSET:
         fields.append("text = ?")
         params.append(text)
-    if date_from is not None:
+    if date_from is not _UNSET:
         fields.append("date_from = ?")
-        params.append(date_from if isinstance(date_from, str) else date_from.isoformat() if date_from else None)
-    if date_to is not None:
+        params.append(_as_iso(date_from))
+    if date_to is not _UNSET:
         fields.append("date_to = ?")
-        params.append(date_to if isinstance(date_to, str) else date_to.isoformat() if date_to else None)
-    if priority is not None:
+        params.append(_as_iso(date_to))
+    if priority is not _UNSET:
         fields.append("priority = ?")
         params.append(priority)
-    if category is not None:
+    if category is not _UNSET:
         fields.append("category = ?")
         params.append(category)
-    if is_pinned is not None:
+    if is_pinned is not _UNSET:
         fields.append("is_pinned = ?")
         params.append(1 if is_pinned else 0)
-    if image_path is not None:
+    if image_path is not _UNSET:
         fields.append("image_path = ?")
-        params.append(image_path if image_path else None)
+        params.append(image_path or None)
 
     if not fields:
         return False
