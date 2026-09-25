@@ -1,6 +1,7 @@
 """Smoke-тесты маршрутов: главная, защита админки, CSRF на POST-формах."""
 
 import base64
+import contextlib
 import hashlib
 
 import pytest
@@ -39,6 +40,23 @@ def test_index_page(client):
     resp = client.get("/")
     assert resp.status_code == 200
     assert "ЗАВОД РУСНИТ" in resp.text
+
+
+def test_healthz_ok(client):
+    resp = client.get("/healthz")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok"}
+
+
+def test_healthz_db_down(client, monkeypatch):
+    @contextlib.contextmanager
+    def _broken_db():
+        raise RuntimeError("база недоступна")
+        yield
+
+    monkeypatch.setattr(routes, "get_db", _broken_db)
+    resp = client.get("/healthz")
+    assert resp.status_code == 503
 
 
 def test_admin_requires_auth(client):

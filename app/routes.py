@@ -14,7 +14,7 @@ import bleach
 import markdown as md_lib
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
 
@@ -32,6 +32,7 @@ from app.db import (
     get_announcement,
     get_announcements,
     get_birthday_employees,
+    get_db,
     get_employees,
     log_greeting,
     search_employees,
@@ -317,6 +318,18 @@ def _get_upcoming_birthdays(horizon: int = 3) -> list[dict]:
         label = labels.get(delta) or f"Через {delta} {_plural(delta, ('день', 'дня', 'дней'))}"
         result.append({"days": delta, "label": label, "names": buckets[delta]})
     return result
+
+
+@router.get("/healthz")
+def healthz():
+    """Проверка живости приложения (для HEALTHCHECK контейнера)."""
+    try:
+        with get_db() as conn:
+            conn.execute("SELECT 1").fetchone()
+    except Exception as e:
+        logger.warning("Healthz: БД недоступна: %s", e)
+        return JSONResponse(status_code=503, content={"status": "unavailable"})
+    return {"status": "ok"}
 
 
 @router.get("/", response_class=HTMLResponse)

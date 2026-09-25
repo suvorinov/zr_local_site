@@ -5,6 +5,7 @@ __pycache__/
 data/*.db
 data/*.db-wal
 data/*.db-shm
+data/*.log
 data/weather_cache.json
 data/news_cache.json
 # Персональные данные сотрудников (источник импорта) не храним в git

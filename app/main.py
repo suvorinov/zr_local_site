@@ -4,6 +4,7 @@
 """
 
 import logging
+import logging.handlers
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -16,11 +17,29 @@ from app.db import init_db
 from app.routes import router
 from app.scheduler import check_birthdays, expire_old_announcements, setup_scheduler
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
 logger = logging.getLogger(__name__)
+
+
+def _setup_logging() -> None:
+    """Настраивает логирование: консоль + файл с ротацией (1 МБ x 3)."""
+    log_dir = Path("data")
+    log_dir.mkdir(exist_ok=True)
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        handlers=[
+            logging.StreamHandler(),
+            logging.handlers.RotatingFileHandler(
+                log_dir / "app.log",
+                maxBytes=1_000_000,
+                backupCount=3,
+                encoding="utf-8",
+            ),
+        ],
+    )
+
+
+_setup_logging()
 
 scheduler = None
 
