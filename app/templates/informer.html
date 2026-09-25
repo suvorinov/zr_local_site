@@ -112,20 +112,21 @@
         box-shadow: 0 4px 30px rgba(0,0,0,0.15);
     }
 
-    /* Режим поздравления: открытка на весь экран, остаётся бегущая строка.
-       Активируется классом .slides-mode на .informer при наличии слайдов. */
-    .informer.slides-mode .top-section,
-    .informer.slides-mode .weather-section,
-    .informer.slides-mode .info-block { display: none; }
-    .informer.slides-mode .items-section { padding: 0; }
-    .informer.slides-mode .slide img {
+    /* Режим активной открытки: на весь экран, остаётся бегущая строка.
+       Класс .slide-active на .informer ставится только пока активен слайд,
+       остальные слоты ротации показывают обычный верстак. */
+    .informer.slide-active .top-section,
+    .informer.slide-active .weather-section,
+    .informer.slide-active .info-block { display: none; }
+    .informer.slide-active .items-section { padding: 0; }
+    .informer.slide-active .slide img {
         width: 100%;
         height: 100%;
         object-fit: cover;
         border-radius: 0;
         box-shadow: none;
     }
-    .informer.slides-mode .holiday-card {
+    .informer.slide-active .holiday-card {
         width: 100%;
         height: 100%;
         max-width: none;
@@ -568,25 +569,16 @@
     updateClock();
     setInterval(updateClock, 1000);
 
-    /* ===== Общая ротация: карточки именинников и инфо-блоки ===== */
-    var HAS_SLIDES = document.querySelectorAll('.slide').length > 0;
-
-    /* Режим поздравления: открытки на весь экран + бегущая строка.
-       Инфо-блоки (цитаты/новости/ближайшие ДР) в ротации не участвуют. */
+    /* ===== Общая ротация: открытки именинников и инфо-блоки вперемешку =====
+       Слоты идут в DOM-порядке: сначала открытки/праздники, затем
+       «Ближайшие ДР», цитата, новость, крупная дата. Активная открытка
+       разворачивается на весь экран (slide-active), любой другой слот
+       показывает обычный верстак (шапка, погода внизу). */
     var informerRoot = document.querySelector('.informer');
-    if (informerRoot && HAS_SLIDES) informerRoot.classList.add('slides-mode');
-
-    var rotatables = HAS_SLIDES
-        ? document.querySelectorAll('.slide')
-        : document.querySelectorAll('.info-block');
+    var rotatables = [].slice.call(document.querySelectorAll('.slide, .info-block'));
 
     var ROTATION_SECONDS = {{ rotation_seconds if rotation_seconds is defined else 60 }};
     var EMPTY_ROTATION_SECONDS = {{ empty_rotation_seconds if empty_rotation_seconds is defined else 20 }};
-
-    /* Если слайдов (именинники/праздники) нет — ротация живёт быстрее
-       (empty_rotation_seconds), чтобы инфо-блоки не зависали. Когда слайды
-       есть — даём рассмотреть открытку (rotation_seconds). */
-    var ROTATION_INTERVAL_MS = (HAS_SLIDES ? ROTATION_SECONDS : EMPTY_ROTATION_SECONDS) * 1000;
 
     var quotesData = (function() {
         var el = document.getElementById('quotes-data');
@@ -635,15 +627,36 @@
         rotatables.forEach(function(s) { s.classList.remove('active'); });
         var el = rotatables[index];
         el.classList.add('active');
+        if (informerRoot) {
+            informerRoot.classList.toggle('slide-active', el.classList.contains('slide'));
+        }
         if (el.getAttribute && el.getAttribute('data-info') === 'quote') setRandomQuote();
     }
 
-    if (rotatables.length > 1) {
-        setInterval(function() {
+    /* Открытка смотрела дольше (rotation_seconds), инфо-блоки — быстрее
+       (empty_rotation_seconds): интервал пересчитывается для каждого слота. */
+    function rotationDelay() {
+        var el = rotatables[current];
+        var seconds = (el && el.classList.contains('slide'))
+            ? ROTATION_SECONDS : EMPTY_ROTATION_SECONDS;
+        return seconds * 1000;
+    }
+
+    function startRotation() {
+        if (rotatables.length <= 1) return;
+        setTimeout(function next() {
             current = (current + 1) % rotatables.length;
             activateSlot(current);
-        }, ROTATION_INTERVAL_MS);
+            setTimeout(next, rotationDelay());
+        }, rotationDelay());
     }
+
+    /* Инициализация: слот, помеченный активным на сервере, уже показан;
+       осталось выставить режим открытки/верстака под него. */
+    if (informerRoot) {
+        informerRoot.classList.toggle('slide-active', rotatables[current].classList.contains('slide'));
+    }
+    startRotation();
 
     /* ===== Ротация новостей внутри своего инфо-блока ===== */
     var newsItems = (function() {

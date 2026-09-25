@@ -420,6 +420,13 @@ def compute_age(birthday: str | None, today: date | None = None) -> int | None:
     return ref.year - bd.year - ((ref.month, ref.day) < (bd.month, bd.day))
 
 
+# Версия графического шаблона открытки. Увеличивайте при изменениях дизайна или
+# текста заголовка: имя файла получает суффикс __vN, планировщик/роуты увидят
+# «нового» файла нет и перегенерируют открытку, а _cleanup_old_greetings удалит
+# устаревшие версии.
+_GREETING_VERSION = 2
+
+
 def greeting_filename(employee_name: str, age: int | None) -> Path:
     """Возвращает путь к файлу открытки сотрудника.
 
@@ -435,7 +442,8 @@ def greeting_filename(employee_name: str, age: int | None) -> Path:
     """
     safe_name = re.sub(r'[^\w\s-]', '', employee_name).strip().replace(' ', '_')
     tag = f"_{age}" if age else ""
-    return settings.greeting_dir / f"greeting_{safe_name}{tag}.jpg"
+    suffix = f"__v{_GREETING_VERSION}"
+    return settings.greeting_dir / f"greeting_{safe_name}{tag}{suffix}.jpg"
 
 
 def _personal_name(full_name: str) -> str:
