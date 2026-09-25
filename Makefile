@@ -9,7 +9,7 @@ COM := docker compose
 build-uid := $(shell id -u)
 build-gid := $(shell id -g)
 
-.PHONY: help install prepare run db-import seed build up down stop restart logs ps smoke
+.PHONY: help install test prepare run db-import seed build up down stop restart logs ps smoke
 
 help: ## Показать список команд
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -18,6 +18,10 @@ install: ## Создать виртуальное окружение и уста
 	python3 -m venv .venv
 	$(PIP) install --upgrade pip
 	$(PIP) install -r requirements.txt
+	$(PIP) install -r requirements-dev.txt
+
+test: ## Запустить тесты (pytest)
+	$(PY) -m pytest -q
 
 prepare: ## Создать рабочие каталоги и .env из примера (если его нет)
 	mkdir -p data app/static/greetings/samples

@@ -483,9 +483,13 @@ def add_employee_route(
 ):
     """Добавляет нового сотрудника."""
     require_csrf(request, csrf_token)
+    try:
+        birthday_date = date.fromisoformat(birthday)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Некорректная дата рождения")
     employee_data = EmployeeCreate(
         name=name,
-        birthday=date.fromisoformat(birthday),
+        birthday=birthday_date,
         gender=gender,
     )
     add_employee(employee_data.name, employee_data.birthday, employee_data.gender)
@@ -520,11 +524,16 @@ def add_announcement_route(
 ):
     """Добавляет новое объявление (бегущая строка — только текст и сроки)."""
     require_csrf(request, csrf_token)
+    try:
+        start = date.fromisoformat(date_from) if date_from else None
+        end = date.fromisoformat(date_to) if date_to else None
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Некорректная дата")
     add_announcement(
         title=title,
         text=text,
-        date_from=date.fromisoformat(date_from) if date_from else None,
-        date_to=date.fromisoformat(date_to) if date_to else None,
+        date_from=start,
+        date_to=end,
         priority=priority,
     )
     logger.info("Объявление добавлено через веб: %s", title or text[:50])
@@ -581,12 +590,17 @@ def edit_announcement_route(
 ):
     """Обновляет объявление (бегущая строка — только текст и сроки)."""
     require_csrf(request, csrf_token)
+    try:
+        start = date.fromisoformat(date_from) if date_from else None
+        end = date.fromisoformat(date_to) if date_to else None
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Некорректная дата")
     update_announcement(
         announcement_id=announcement_id,
         title=title,
         text=text,
-        date_from=date.fromisoformat(date_from) if date_from else None,
-        date_to=date.fromisoformat(date_to) if date_to else None,
+        date_from=start,
+        date_to=end,
         priority=priority,
     )
     logger.info("Объявление id=%d отредактировано через веб", announcement_id)
