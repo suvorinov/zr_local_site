@@ -112,6 +112,31 @@
         box-shadow: 0 4px 30px rgba(0,0,0,0.15);
     }
 
+    /* Режим поздравления: открытка на весь экран, остаётся бегущая строка.
+       Активируется классом .slides-mode на .informer при наличии слайдов. */
+    .informer.slides-mode .top-section,
+    .informer.slides-mode .weather-section,
+    .informer.slides-mode .info-block { display: none; }
+    .informer.slides-mode .items-section { padding: 0; }
+    .informer.slides-mode .slide img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        border-radius: 0;
+        box-shadow: none;
+    }
+    .informer.slides-mode .holiday-card {
+        width: 100%;
+        height: 100%;
+        max-width: none;
+        border-radius: 0;
+        box-shadow: none;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+    }
+
     /* Праздничная карточка (слайд-поздравление) */
     .slide.holiday {
         display: none;
@@ -544,14 +569,23 @@
     setInterval(updateClock, 1000);
 
     /* ===== Общая ротация: карточки именинников и инфо-блоки ===== */
-    var rotatables = document.querySelectorAll('.slide, .info-block');
+    var HAS_SLIDES = document.querySelectorAll('.slide').length > 0;
+
+    /* Режим поздравления: открытки на весь экран + бегущая строка.
+       Инфо-блоки (цитаты/новости/ближайшие ДР) в ротации не участвуют. */
+    var informerRoot = document.querySelector('.informer');
+    if (informerRoot && HAS_SLIDES) informerRoot.classList.add('slides-mode');
+
+    var rotatables = HAS_SLIDES
+        ? document.querySelectorAll('.slide')
+        : document.querySelectorAll('.info-block');
+
     var ROTATION_SECONDS = {{ rotation_seconds if rotation_seconds is defined else 60 }};
     var EMPTY_ROTATION_SECONDS = {{ empty_rotation_seconds if empty_rotation_seconds is defined else 20 }};
 
     /* Если слайдов (именинники/праздники) нет — ротация живёт быстрее
        (empty_rotation_seconds), чтобы инфо-блоки не зависали. Когда слайды
        есть — даём рассмотреть открытку (rotation_seconds). */
-    var HAS_SLIDES = document.querySelectorAll('.slide').length > 0;
     var ROTATION_INTERVAL_MS = (HAS_SLIDES ? ROTATION_SECONDS : EMPTY_ROTATION_SECONDS) * 1000;
 
     var quotesData = (function() {
