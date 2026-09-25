@@ -106,7 +106,7 @@ def reconcile(conn, records: list[dict]) -> tuple[int, int, int]:
         Кортеж (вставлено, обновлено, удалено).
     """
     existing = {
-        row["name"]: row for row in
+        row["name"]: dict(row) for row in
         conn.execute("SELECT id, name, birthday, gender FROM employees")
     }
 
