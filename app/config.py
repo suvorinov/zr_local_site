@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -25,7 +25,8 @@ class Settings(BaseSettings):
         timezone: Часовой пояс приложения (IANA, например Europe/Moscow).
         ticker_speed: Скорость бегущей строки (пикселей в секунду).
         admin_username: Логин администратора (обязательно задать в .env).
-        admin_password: Пароль администратора (обязательно задать в .env).
+        admin_password: Пароль администратора (задать ИЛИ хэш).
+        admin_password_hash: bcrypt-хэш пароля администратора (альтернатива).
     """
 
     db_path: Path = Path("data") / "corp_site.db"
@@ -48,36 +49,34 @@ class Settings(BaseSettings):
     news_max_items: int = 6
     admin_username: str = ""
     admin_password: str = ""
+    admin_password_hash: str = ""
 
-    @field_validator("admin_username")
-    @classmethod
-    def username_required(cls, v: str) -> str:
-        if not v or not v.strip():
-            raise ValueError(
-                "CORP_ADMIN_USERNAME обязателен. "
-                "Задайте его в .env файле."
-            )
-        return v
+    @model_validator(mode="after")
+    def admin_credentials_ok(self):
+        """Требует хотя бы один способ проверки пароля: открытый или bcrypt-хэш."""
+        pw = self.admin_password
+        h = self.admin_password_hash
 
-    @field_validator("admin_password")
-    @classmethod
-    def password_must_be_strong(cls, v: str) -> str:
-        if not v or not v.strip():
+        if not pw and not h:
             raise ValueError(
-                "CORP_ADMIN_PASSWORD обязателен. "
-                "Задайте его в .env файле."
+                "Нужны учётные данные администратора: CORP_ADMIN_PASSWORD "
+                "или CORP_ADMIN_PASSWORD_HASH (bcrypt)."
             )
-        if len(v) < 8:
+        if pw:
+            if len(pw) < 8:
+                raise ValueError(
+                    "Пароль администратора должен быть не менее 8 символов."
+                )
+            if pw == "admin":
+                raise ValueError(
+                    "Пароль 'admin' запрещён. Задайте надёжный пароль."
+                )
+        if h and not h.startswith("$2"):
             raise ValueError(
-                "Пароль администратора должен быть не менее 8 символов. "
-                "Задайте его в CORP_ADMIN_PASSWORD."
+                "CORP_ADMIN_PASSWORD_HASH должен быть bcrypt-хэшем "
+                "(префикс $2a$/$2b$/$2y$)."
             )
-        if v == "admin":
-            raise ValueError(
-                "Пароль 'admin' запрещён. "
-                "Задайте надёжный пароль в CORP_ADMIN_PASSWORD."
-            )
-        return v
+        return self
 
     @field_validator("timezone")
     @classmethod

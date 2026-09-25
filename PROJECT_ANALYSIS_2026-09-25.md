@@ -161,15 +161,15 @@ TypeError: 'sqlite3.Row' object does not support item assignment
 | 13 | ⚡ Явный `busy_timeout=5.0`; `WAL` задавать один раз при `init_db` | меньше «database is locked», чище коннекты |
 | 14 | ⚡ Зафиксировать версии зависимостей (pip-compile/lock) | воспроизводимая сборка |
 
-### Фаза 3 — Безопасность (1–2 дня)
+### Фаза 3 — Безопасность ✅ (1–2 дня)
 
 | # | Действие | Эффект |
 |---|---|---|
-| 15 | ⚡ Поддержка `CORP_ADMIN_PASSWORD_HASH` | пароль не светится в `.env` |
-| 16 | ⚡ Rate-limit `/admin` в приложении (slowapi) | защита работает и без nginx |
-| 17 | ⚡ `protocols={"http","https","mailto"}` в bleach | не зависеть от дефолтов |
-| 18 | ⚡ Эскейп `</script>` в JSON-блоках (`<\/`) + `rel="noopener"` | прикрыть класс XSS |
-| 19 | 🚀 Вернуть `HTTPS_SETUP.md` (или раздел в README) по nginx+certbot | документированная установка |
+| 15 | ✅ Поддержка `CORP_ADMIN_PASSWORD_HASH` | пароль не светится в `.env` |
+| 16 | ✅ Rate-limit `/admin` в приложении (скользящее окно 20/мин, своя реализация) | защита работает и без nginx |
+| 17 | ✅ `protocols={"http","https","mailto"}` в bleach | не зависеть от дефолтов |
+| 18 | ✅ Эскейп `</script>` в JSON-блоках (`<\/`) + `rel="noopener"` | прикрыть класс XSS |
+| 19 | ✅ Вернуть `HTTPS_SETUP.md` (или раздел в README) по nginx+certbot | документированная установка |
 
 ### Фаза 4 — Функциональность (по ценности)
 

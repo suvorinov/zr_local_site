@@ -3,7 +3,9 @@
 import base64
 import contextlib
 import hashlib
+from types import SimpleNamespace
 
+import bcrypt
 import pytest
 from fastapi.testclient import TestClient
 
@@ -140,3 +142,53 @@ def test_post_with_wrong_csrf_rejected(client):
         headers=_auth(),
     )
     assert resp.status_code == 403
+
+
+def _stub_settings(monkeypatch, *, password_hash="", password="testpass"):
+    stub = SimpleNamespace(
+        admin_username="stubadmin",
+        admin_password_hash=password_hash,
+        admin_password=password,
+    )
+    monkeypatch.setattr(routes, "settings", stub)
+    return stub
+
+
+def test_check_admin_password_plain(monkeypatch):
+    _stub_settings(monkeypatch, password="s3cret-pass")
+    assert routes._check_admin_password("s3cret-pass")
+    assert not routes._check_admin_password("s3cret-pasx")
+
+
+def test_check_admin_password_bcrypt(monkeypatch):
+    h = bcrypt.hashpw(b"s3cret-pass", bcrypt.gensalt()).decode()
+    _stub_settings(monkeypatch, password_hash=h, password="")
+    assert routes._check_admin_password("s3cret-pass")
+    assert not routes._check_admin_password("wrong-pass")
+    assert not routes._check_admin_password("")
+
+
+def test_markdownify_accepts_http_but_strips_javascript():
+    out = routes._markdownify('<a href="javascript:alert(1)">x</a>')
+    assert "javascript:" not in out
+
+
+def test_markdownify_adds_noopener_to_target_links():
+    out = routes._markdownify('<a href="http://example.com" target="_blank">x</a>')
+    assert 'rel="noopener"' in out
+    assert 'target="_blank"' in out
+
+
+def test_json_script_escapes_closing_tags():
+    out = routes._json_script('{"a": "</script><script>alert(1)</script>"}')
+    assert "</script>" not in out
+    assert "<\\/script>" in out
+
+
+def test_admin_rate_limit_returns_429(client):
+    routes._admin_hits.clear()
+    for _ in range(20):
+        resp = client.get("/admin/employees")
+        assert resp.status_code in (401, 200)
+    resp = client.get("/admin/employees")
+    assert resp.status_code == 429

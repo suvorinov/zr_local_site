@@ -3,13 +3,19 @@
 Определяет эндпоинты для главной страницы и управления контентом.
 """
 
+import hmac
+import html
+import html.parser
 import json
 import logging
 import random
 import re
+import threading
+import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+import bcrypt
 import bleach
 import markdown as md_lib
 
@@ -65,9 +71,60 @@ _BLEACH_ALLOWED_ATTRS = {
     "img": ["src", "alt", "title"],
 }
 
+# Разрешённые схемы URL: не зависеть от дефолтов bleach.
+_BLEACH_PROTOCOLS = {"http", "https", "mailto"}
+
+# Rate-limit для админ-эндпоинтов: срабатывает и за nginx, и без него.
+# Простое скользящее окно (20 запросов в минуту) по реальному IP клиента
+# (за прокси — X-Forwarded-For, иначе все клиенты сливаются в 127.0.0.1).
+_ADMIN_RATE_MAX = 20
+_ADMIN_RATE_WINDOW = 60
+
+_admin_hits: dict[str, list[float]] = {}
+_admin_lock = threading.Lock()
+
+
+def _rate_key(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def admin_rate_limit(request: Request) -> None:
+    """Ограничивает число обращений к админке с одного IP."""
+    ip = _rate_key(request)
+    now = time.monotonic()
+    with _admin_lock:
+        hits = [t for t in _admin_hits.get(ip, []) if t > now - _ADMIN_RATE_WINDOW]
+        if len(hits) >= _ADMIN_RATE_MAX:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Слишком много запросов к админке. Подождите минуту.",
+            )
+        hits.append(now)
+        _admin_hits[ip] = hits
+
+
+def _check_admin_password(given: str) -> bool:
+    """Проверяет пароль администратора: по bcrypt-хэшу или открытым сравнением."""
+    h = settings.admin_password_hash
+    if h:
+        try:
+            return bcrypt.checkpw(given.encode("utf-8"), h.encode("utf-8"))
+        except ValueError:
+            return False
+    return hmac.compare_digest(given, settings.admin_password)
+
 
 def verify_admin(credentials: HTTPBasicCredentials | None = Depends(security)):
-    if not credentials or credentials.username != settings.admin_username or credentials.password != settings.admin_password:
+    if not credentials or credentials.username != settings.admin_username:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Неверные учётные данные",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    if not _check_admin_password(credentials.password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Неверные учётные данные",
@@ -93,21 +150,86 @@ templates.env.filters["dfmt"] = _dfmt
 def _markdownify(text: str) -> str:
     """Конвертирует Markdown в санитизированный HTML.
 
-    Использует bleach для очистки от potentially dangerous тегов
-    (script, iframe, и т.д.) — защита от XSS.
+    Использует bleach для очистки от потенциально опасных тегов
+    (script, iframe и т.д.) — защита от XSS. Схемы URL ограничены
+    явно, ссылки с target получают rel="noopener".
     """
     if not text:
         return ""
-    html = md_lib.markdown(text, extensions=["nl2br"])
-    return bleach.clean(
-        html,
+    html_str = md_lib.markdown(text, extensions=["nl2br"])
+    clean = bleach.clean(
+        html_str,
         tags=_BLEACH_ALLOWED_TAGS,
         attributes=_BLEACH_ALLOWED_ATTRS,
+        protocols=_BLEACH_PROTOCOLS,
         strip=True,
+    )
+    return _add_rel_noopener(clean)
+
+
+class _NoopenerRewriter(html.parser.HTMLParser):
+    """Пересобирает HTML, добавляя rel="noopener" ссылкам с target."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.out: list[str] = []
+
+    def _emit(self, tag: str, attrs) -> None:
+        pieces = [tag]
+        for k, v in attrs:
+            if v is None:
+                pieces.append(k)
+            else:
+                pieces.append(f'{k}="{html.escape(v, quote=True)}"')
+        self.out.append("<" + (" ".join(pieces)) + ">")
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "a":
+            pool = dict(attrs)
+            if "target" in pool and "rel" not in pool:
+                attrs = list(attrs) + [("rel", "noopener")]
+        self._emit(tag, attrs)
+
+    def handle_startendtag(self, tag, attrs):
+        self.handle_starttag(tag, attrs)
+
+    def handle_endtag(self, tag):
+        self.out.append(f"</{tag}>")
+
+    def handle_data(self, data):
+        self.out.append(data)
+
+    def handle_entityref(self, name):
+        self.out.append(f"&{name};")
+
+    def handle_charref(self, name):
+        self.out.append(f"&#{name};")
+
+
+def _add_rel_noopener(html_str: str) -> str:
+    """Добавляет rel="noopener" ко всем ссылкам с target (защита от window.opener)."""
+    parser = _NoopenerRewriter()
+    parser.feed(html_str)
+    parser.close()
+    return "".join(parser.out)
+
+
+def _json_script(value: str) -> str:
+    """Обезопасивает JSON-строку для вставки в <script type="application/json">.
+
+    Закрывает возможность преждевременного завершения блока тегом </script>
+    (и комментария <!--) даже при наличии подобных строк в данных.
+    """
+    return (
+        value.replace("</", "<\\/")
+        .replace("<!--", "<\\!--")
+        .replace("\u2028", "\\u2028")
+        .replace("\u2029", "\\u2029")
     )
 
 
 templates.env.filters["markdown"] = _markdownify
+templates.env.filters["json_script"] = _json_script
 STATIC_URL = "/static"
 
 
@@ -397,7 +519,11 @@ def index(request: Request):
 
 
 @router.get("/admin", response_class=HTMLResponse)
-def admin_redirect(_: None = Depends(verify_admin)):
+def admin_redirect(
+    request: Request,
+    limit_ok: None = Depends(admin_rate_limit),
+    _: None = Depends(verify_admin),
+):
     """Редирект на раздел сотрудников."""
     return RedirectResponse(url="/admin/employees")
 
@@ -408,6 +534,7 @@ def admin_employees(
     name: str = Query(default=""),
     birthday: str = Query(default=""),
     page: int = Query(default=1, ge=1),
+    limit_ok: None = Depends(admin_rate_limit),
     _: None = Depends(verify_admin),
 ):
     """Панель управления сотрудниками с поиском и пагинацией."""
@@ -444,6 +571,7 @@ def admin_announcements(
     search_date_from: str = Query(default=""),
     search_date_to: str = Query(default=""),
     edit_id: int | None = Query(default=None),
+    limit_ok: None = Depends(admin_rate_limit),
     _: None = Depends(verify_admin),
 ):
     """Панель управления объявлениями с пагинацией и фильтром по датам."""
@@ -492,6 +620,7 @@ def add_employee_route(
     birthday: str = Form(...),
     gender: str = Form(...),
     csrf_token: str = Form(default=""),
+    limit_ok: None = Depends(admin_rate_limit),
     _: None = Depends(verify_admin),
 ):
     """Добавляет нового сотрудника."""
@@ -515,6 +644,7 @@ def delete_employee_route(
     request: Request,
     employee_id: int,
     csrf_token: str = Form(default=""),
+    limit_ok: None = Depends(admin_rate_limit),
     _: None = Depends(verify_admin),
 ):
     """Удаляет сотрудника."""
@@ -527,6 +657,7 @@ def delete_employee_route(
 @router.post("/admin/announcements/add")
 def add_announcement_route(
     request: Request,
+    limit_ok: None = Depends(admin_rate_limit),
     _: None = Depends(verify_admin),
     csrf_token: str = Form(default=""),
     title: str = Form(default=""),
@@ -557,6 +688,7 @@ def add_announcement_route(
 def edit_announcement_page(
     request: Request,
     announcement_id: int,
+    limit_ok: None = Depends(admin_rate_limit),
     _: None = Depends(verify_admin),
 ):
     """Страница редактирования объявления."""
@@ -593,6 +725,7 @@ def edit_announcement_page(
 def edit_announcement_route(
     request: Request,
     announcement_id: int,
+    limit_ok: None = Depends(admin_rate_limit),
     _: None = Depends(verify_admin),
     csrf_token: str = Form(default=""),
     title: str = Form(default=""),
@@ -625,6 +758,7 @@ def deactivate_announcement_route(
     request: Request,
     announcement_id: int,
     csrf_token: str = Form(default=""),
+    limit_ok: None = Depends(admin_rate_limit),
     _: None = Depends(verify_admin),
 ):
     """Деактивирует объявление."""
@@ -639,6 +773,7 @@ def delete_announcement_route(
     request: Request,
     announcement_id: int,
     csrf_token: str = Form(default=""),
+    limit_ok: None = Depends(admin_rate_limit),
     _: None = Depends(verify_admin),
 ):
     """Удаляет объявление."""

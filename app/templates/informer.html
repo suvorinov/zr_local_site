@@ -555,9 +555,9 @@
     </div>
 </div>
 
-<script id="forecast-data" type="application/json">{{ forecast_all|safe }}</script>
-<script id="quotes-data" type="application/json">{{ quotes_json|safe }}</script>
-<script id="news-data" type="application/json">{{ news_json|safe }}</script>
+<script id="forecast-data" type="application/json">{{ forecast_all|json_script }}</script>
+<script id="quotes-data" type="application/json">{{ quotes_json|json_script }}</script>
+<script id="news-data" type="application/json">{{ news_json|json_script }}</script>
 
 <script>
 (function() {
