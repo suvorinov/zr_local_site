@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.config import settings
-from app.db import get_birthday_employees, log_greeting
+from app.db import auto_deactivate_expired, get_birthday_employees, log_greeting
 from app.image_gen import compute_age, generate_greeting, greeting_filename
 from app.timeutils import now
 
@@ -50,6 +50,13 @@ def check_birthdays():
             logger.error("Ошибка генерации для %s: %s", emp["name"], e)
 
 
+def expire_old_announcements():
+    """Гасит объявления с истёкшим сроком показа (раз в час)."""
+    deactivated = auto_deactivate_expired()
+    if deactivated:
+        logger.info("Автоматически деактивировано %d просроченных объявлений", deactivated)
+
+
 def setup_scheduler() -> BackgroundScheduler:
     """Настраивает и запускает планировщик.
 
@@ -65,6 +72,13 @@ def setup_scheduler() -> BackgroundScheduler:
         minute=int(minute),
         timezone=ZoneInfo(settings.timezone),
         id="birthday_check",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        expire_old_announcements,
+        "interval",
+        hours=1,
+        id="expire_announcements",
         replace_existing=True,
     )
     scheduler.start()

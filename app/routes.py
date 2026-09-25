@@ -24,7 +24,6 @@ from app.csrf import generate_csrf_token, get_session_id, require_csrf
 from app.db import (
     add_announcement,
     add_employee,
-    auto_deactivate_expired,
     count_announcements,
     count_employees,
     deactivate_announcement,
@@ -219,7 +218,6 @@ def _get_ticker_items() -> list[str]:
     Returns:
         Список строк (заголовок + текст) активных объявлений.
     """
-    auto_deactivate_expired()
     announcements = get_announcements(active_only=True)
     return [
         (ann.get("title", "") + (" — " if ann.get("title") else "") + ann["text"])
@@ -436,7 +434,6 @@ def admin_announcements(
     _: None = Depends(verify_admin),
 ):
     """Панель управления объявлениями с пагинацией и фильтром по датам."""
-    auto_deactivate_expired()
     edit_ann = get_announcement(edit_id) if edit_id else None
     per_page = 10
     offset = (page - 1) * per_page

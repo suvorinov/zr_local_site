@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import settings
 from app.db import init_db
 from app.routes import router
-from app.scheduler import check_birthdays, setup_scheduler
+from app.scheduler import check_birthdays, expire_old_announcements, setup_scheduler
 
 logging.basicConfig(
     level=logging.INFO,
@@ -36,6 +36,7 @@ async def lifespan(app: FastAPI):
     logger.info("Запуск %s", settings.app_title)
     init_db()
     check_birthdays()
+    expire_old_announcements()
     scheduler = setup_scheduler()
     yield
     if scheduler:
