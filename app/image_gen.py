@@ -2,7 +2,7 @@
 
 Создаёт праздничную открытку поверх фоновой картинки:
 - композиция из градиента, мягкого золотого сияния, звёзд и рамки;
-- заголовок («С Днём Рождения!» / «С Юбилеем!»);
+- заголовок «Поздравляем с днём рождения / юбилеем <ФИО в родительном падеже>!»;
 - крупная цифра возраста для юбилейных дат;
 - обращение с учётом пола сотрудника («Дорогой» / «Дорогая»);
 - пожелание из тематического набора (обычный день рождения / юбилей);
@@ -20,6 +20,9 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
+from petrovich.enums import Case, Gender
+from petrovich.main import Petrovich
+
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -34,12 +37,6 @@ _DIM_GOLD = (222, 190, 96)
 # Юбилейная дата: возраст кратен шагу и не меньше минимума
 _JUBILEE_STEP = 5
 _JUBILEE_MIN_AGE = 25
-
-_HEADLINES = (
-    "С Днём Рождения!",
-    "С Днём Рождения!",
-    "Поздравляем с Днём Рождения!",
-)
 
 _ADDRESS_PREFIX = {"male": "Дорогой", "female": "Дорогая"}
 
@@ -414,6 +411,49 @@ def _personal_name(full_name: str) -> str:
     return parts[0] if parts else full_name
 
 
+_petrovich = Petrovich()
+
+
+def _decline_word(method, word: str, gender: str) -> str:
+    """Склоняет одно слово ФИО в родительный падеж.
+
+    Args:
+        method: Метод petrovich (lastname/firstname/middlename).
+        word: Слово ФИО.
+        gender: Пол сотрудника (male/female).
+
+    Returns:
+        Склонённое слово или исходное при ошибке (костыль для редких имён).
+    """
+    if not word:
+        return ""
+    try:
+        g = Gender.MALE if gender == "male" else Gender.FEMALE
+        declined = method(word, Case.GENITIVE, g)
+        return declined or word
+    except Exception:
+        return word
+
+
+def _genitive_fio(full_name: str, gender: str) -> str:
+    """Склоняет ФИО в родительный падеж: «Колесова Максима Сергеевича».
+
+    Args:
+        full_name: ФИО сотрудника.
+        gender: Пол (male/female).
+
+    Returns:
+        Строка в родительном падеже для заголовка открытки.
+    """
+    parts = full_name.split()
+    if not parts:
+        return ""
+    surname = _decline_word(_petrovich.lastname, parts[0], gender)
+    first = _decline_word(_petrovich.firstname, parts[1], gender) if len(parts) > 1 else ""
+    middle = _decline_word(_petrovich.middlename, parts[2], gender) if len(parts) > 2 else ""
+    return " ".join(x for x in (surname, first, middle) if x)
+
+
 def generate_greeting(
     employee_name: str,
     gender: str,
@@ -458,9 +498,27 @@ def generate_greeting(
     draw_result = ImageDraw.Draw(result)
 
     jubilee = is_jubilee_age(age)
-
-    headline = random.choice(_HEADLINES if not jubilee else ("С Юбилеем!",))
     display_age = age if jubilee else None
+
+    font_head = _get_font(104, decorative=True)
+
+    # Заголовок с ФИО в родительном падеже — различает сотрудников
+    # с одинаковыми именами и отчествами. Пример:
+    #   «Поздравляем с днём рождения Колесова Максима Сергеевича!»
+    occasion = "юбилеем" if jubilee else "днём рождения"
+    gen_fio = _genitive_fio(employee_name, gender)
+    max_head_w = img.width - 260
+    if not gen_fio:
+        headline_lines = _wrap_lines(draw_result, f"Поздравляем с {occasion}!", font_head, max_head_w)
+    else:
+        one_line = f"Поздравляем с {occasion} {gen_fio}!"
+        if draw_result.textlength(one_line, font=font_head) <= max_head_w:
+            headline_lines = [one_line]
+        else:
+            # Фразы и ФИО переносятся раздельно, чтобы имя не отрывалось
+            # от фамилии: «Поздравляем с юбилеем», «Ковалёвой Анны Викторовны!»
+            headline_lines = _wrap_lines(draw_result, f"Поздравляем с {occasion}", font_head, max_head_w)
+            headline_lines += _wrap_lines(draw_result, f"{gen_fio}!", font_head, max_head_w)
 
     address = f"{_ADDRESS_PREFIX.get(gender, 'Дорогой')} {_personal_name(employee_name)}!"
     if jubilee:
@@ -480,7 +538,7 @@ def generate_greeting(
     max_text_w = img.width - 420
     wish_lines = _wrap_lines(draw_result, wish, font_wish, max_text_w)
 
-    blocks: list[dict] = [{"kind": "text", "text": headline, "font": font_head,
+    blocks: list[dict] = [{"kind": "headline", "lines": headline_lines, "font": font_head,
                            "fill": _GOLD, "glow": True, "gap": 26}]
     if display_age:
         blocks.append({"kind": "text", "text": str(display_age), "font": font_num,
@@ -499,7 +557,7 @@ def generate_greeting(
     def block_height(b: dict) -> int:
         if b["kind"] == "ornament":
             return 30
-        if b["kind"] == "wish":
+        if b["kind"] in ("headline", "wish"):
             font = b["font"]
             asc, desc = font.getmetrics()
             return len(b["lines"]) * (asc + desc + 8)
@@ -517,12 +575,16 @@ def generate_greeting(
                            img.width, (255, 215, 0, 150), (255, 215, 0, 220))
             y += 30
             continue
-        if b["kind"] == "wish":
+        if b["kind"] in ("headline", "wish"):
             asc, desc = b["font"].getmetrics()
             for line in b["lines"]:
                 line_w = draw_result.textlength(line, font=b["font"])
                 x = (img.width - line_w) // 2
-                draw_result.text((x, y), line, fill=b["fill"], font=b["font"])
+                if b.get("glow"):
+                    _draw_text_with_shadow(draw_result, (x, y), line,
+                                           b["font"], b["fill"])
+                else:
+                    draw_result.text((x, y), line, fill=b["fill"], font=b["font"])
                 y += asc + desc + 8
             continue
         text_w = draw_result.textlength(b["text"], font=b["font"])

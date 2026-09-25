@@ -11,3 +11,4 @@ bleach>=6.1.0
 numpy>=1.26.0
 niquests>=3.0.0
 openmeteo-requests>=1.7.0
+petrovich>=2.0.1
