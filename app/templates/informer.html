@@ -546,6 +546,13 @@
     /* ===== Общая ротация: карточки именинников и инфо-блоки ===== */
     var rotatables = document.querySelectorAll('.slide, .info-block');
     var ROTATION_SECONDS = {{ rotation_seconds if rotation_seconds is defined else 60 }};
+    var EMPTY_ROTATION_SECONDS = {{ empty_rotation_seconds if empty_rotation_seconds is defined else 20 }};
+
+    /* Если слайдов (именинники/праздники) нет — ротация живёт быстрее
+       (empty_rotation_seconds), чтобы инфо-блоки не зависали. Когда слайды
+       есть — даём рассмотреть открытку (rotation_seconds). */
+    var HAS_SLIDES = document.querySelectorAll('.slide').length > 0;
+    var ROTATION_INTERVAL_MS = (HAS_SLIDES ? ROTATION_SECONDS : EMPTY_ROTATION_SECONDS) * 1000;
 
     var quotesData = (function() {
         var el = document.getElementById('quotes-data');
@@ -601,7 +608,7 @@
         setInterval(function() {
             current = (current + 1) % rotatables.length;
             activateSlot(current);
-        }, ROTATION_SECONDS * 1000);
+        }, ROTATION_INTERVAL_MS);
     }
 
     /* ===== Ротация новостей внутри своего инфо-блока ===== */
