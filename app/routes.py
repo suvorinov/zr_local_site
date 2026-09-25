@@ -3,9 +3,11 @@
 Определяет эндпоинты для главной страницы и управления контентом.
 """
 
+import csv
 import hmac
 import html
 import html.parser
+import io
 import json
 import logging
 import random
@@ -15,6 +17,7 @@ import time
 import uuid
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from urllib.parse import quote
 
 import bcrypt
 import bleach
@@ -32,7 +35,7 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
 
@@ -51,10 +54,12 @@ from app.db import (
     get_announcements,
     get_birthday_employees,
     get_db,
+    get_employee,
     get_employees,
     log_greeting,
     search_employees,
     update_announcement,
+    update_employee,
 )
 from app.feed import get_news_items
 from app.image_gen import compute_age, generate_greeting, greeting_filename, is_jubilee_age
@@ -601,6 +606,8 @@ def admin_employees(
     name: str = Query(default=""),
     birthday: str = Query(default=""),
     page: int = Query(default=1, ge=1),
+    edit_id: int | None = Query(default=None),
+    report: str = Query(default=""),
     limit_ok: None = Depends(admin_rate_limit),
     _: None = Depends(verify_admin),
 ):
@@ -613,6 +620,7 @@ def admin_employees(
     today = timeutils.today()
     session_id = get_session_id(request)
     csrf_token = generate_csrf_token(session_id)
+    edit_employee = get_employee(edit_id) if edit_id else None
     return templates.TemplateResponse(
         request,
         "admin.html",
@@ -625,6 +633,8 @@ def admin_employees(
             "page": page,
             "total_pages": total_pages,
             "total": total,
+            "edit_employee": edit_employee,
+            "report": report,
             "title": f"{settings.app_title} — Сотрудники",
             "csrf_token": csrf_token,
         },
@@ -719,6 +729,142 @@ def delete_employee_route(
     ok = delete_employee(employee_id)
     logger.info("Удаление сотрудника id=%d: %s", employee_id, "успех" if ok else "не найден")
     return RedirectResponse(url="/admin/employees", status_code=303)
+
+
+@router.post("/admin/employees/{employee_id}/edit")
+def edit_employee_route(
+    request: Request,
+    employee_id: int,
+    name: str = Form(...),
+    birthday: str = Form(...),
+    gender: str = Form(...),
+    csrf_token: str = Form(default=""),
+    limit_ok: None = Depends(admin_rate_limit),
+    _: None = Depends(verify_admin),
+):
+    """Обновляет данные сотрудника."""
+    require_csrf(request, csrf_token)
+    try:
+        birthday_date = date.fromisoformat(birthday)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Некорректная дата рождения")
+    employee_data = EmployeeCreate(
+        name=name,
+        birthday=birthday_date,
+        gender=gender,
+    )
+    ok = update_employee(
+        employee_id,
+        employee_data.name,
+        employee_data.birthday,
+        employee_data.gender,
+    )
+    if not ok:
+        raise HTTPException(status_code=404, detail="Сотрудник не найден")
+    logger.info("Сотрудник id=%d обновлён через веб: %s", employee_id, name)
+    return RedirectResponse(url="/admin/employees", status_code=303)
+
+
+@router.get("/admin/employees/export", response_class=Response)
+def export_employees_route(
+    request: Request,
+    limit_ok: None = Depends(admin_rate_limit),
+    _: None = Depends(verify_admin),
+):
+    """Выгружает сотрудников в CSV (точка с запятой, с BOM для Excel)."""
+    buf = io.StringIO()
+    writer = csv.writer(buf, delimiter=";")
+    writer.writerow(["ФИО", "Дата рождения", "Пол"])
+    for emp in sorted(get_employees(), key=lambda e: e["name"]):
+        writer.writerow([
+            emp["name"],
+            emp["birthday"],
+            "Мужской" if emp["gender"] == "male" else "Женский",
+        ])
+    return Response(
+        content="\ufeff" + buf.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="employees.csv"'},
+    )
+
+
+_IMPORT_GENDER_MAP = {
+    "мужской": "male", "муж": "male", "м": "male", "male": "male", "m": "male",
+    "женский": "female", "жен": "female", "ж": "female", "female": "female", "f": "female",
+}
+_MAX_CSV_BYTES = 2 * 1024 * 1024
+
+
+def _parse_employee_csv(content: bytes) -> tuple[list[dict], list[str]]:
+    """Разбирает CSV сотрудников: ФИО;Дата рождения;Пол.
+
+    Returns:
+        Кортеж (записи {name, birthday, gender}, список ошибок).
+    """
+    text = content.decode("utf-8-sig")
+    reader = csv.DictReader(io.StringIO(text), delimiter=";")
+    records: list[dict] = []
+    errors: list[str] = []
+    for line_no, row in enumerate(reader, start=2):
+        name = (row.get("ФИО") or row.get("name") or "").strip()
+        if not name:
+            continue
+        gender_raw = (row.get("Пол") or row.get("gender") or "").strip().lower()
+        gender = _IMPORT_GENDER_MAP.get(gender_raw)
+        if not gender:
+            errors.append(f"строка {line_no}: неизвестный пол «{gender_raw}»")
+            continue
+        raw_birthday = (row.get("Дата рождения") or row.get("birthday") or "").strip()
+        birthday: date | None = None
+        for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%d.%m.%y"):
+            try:
+                birthday = datetime.strptime(raw_birthday, fmt).date()
+                break
+            except ValueError:
+                continue
+        if not birthday:
+            errors.append(f"строка {line_no}: не удалось разобрать дату «{raw_birthday}»")
+            continue
+        records.append({"name": name, "birthday": birthday, "gender": gender})
+    return records, errors
+
+
+@router.post("/admin/employees/import")
+def import_employees_route(
+    request: Request,
+    file: UploadFile = File(...),
+    csrf_token: str = Form(default=""),
+    limit_ok: None = Depends(admin_rate_limit),
+    _: None = Depends(verify_admin),
+):
+    """Импортирует сотрудников из CSV (досинхронизация по ФИО)."""
+    require_csrf(request, csrf_token)
+    content = file.file.read(_MAX_CSV_BYTES + 1)
+    if len(content) > _MAX_CSV_BYTES:
+        raise HTTPException(status_code=400, detail="Файл больше 2 МБ")
+    records, parse_errors = _parse_employee_csv(content)
+    if not records and not parse_errors:
+        raise HTTPException(status_code=400, detail="В файле не найдено строк данных")
+
+    by_name = {emp["name"]: emp for emp in get_employees()}
+    added = updated = 0
+    for rec in records:
+        existing = by_name.get(rec["name"])
+        if existing is None:
+            add_employee(rec["name"], rec["birthday"], rec["gender"])
+            added += 1
+        elif existing["birthday"] != rec["birthday"].isoformat() or existing["gender"] != rec["gender"]:
+            update_employee(existing["id"], rec["name"], rec["birthday"], rec["gender"])
+            updated += 1
+
+    lines = [f"импортировано: {added} новых, обновлено: {updated}"]
+    for err in parse_errors:
+        lines.append(f"пропущено ({err})")
+    logger.info("CSV-импорт сотрудников: %s", "; ".join(lines))
+    return RedirectResponse(
+        url=f"/admin/employees?report={quote('; '.join(lines))}",
+        status_code=303,
+    )
 
 
 _UPLOAD_DIR = Path("app") / "static" / "uploads"
@@ -917,3 +1063,140 @@ def delete_announcement_route(
     ok = delete_announcement(announcement_id)
     logger.info("Удаление объявления id=%d: %s", announcement_id, "успех" if ok else "не найдено")
     return RedirectResponse(url="/admin/announcements", status_code=303)
+
+
+def _read_content_file(filename: str) -> list[dict]:
+    """Читает JSON-файл контента (quotes/holidays) как список словарей."""
+    path = _DATA_DIR / filename
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return raw if isinstance(raw, list) else []
+    except (OSError, json.JSONDecodeError):
+        logger.error("Не удалось прочитать %s", path)
+        return []
+
+
+def _write_content_file(filename: str, records: list[dict]) -> None:
+    """Атомарно сохраняет JSON-файл контента и инвалидирует кэш."""
+    global _QUOTES_CACHE, _HOLIDAYS_CACHE
+    path = _DATA_DIR / filename
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(
+        json.dumps(records, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    tmp.replace(path)
+    _QUOTES_CACHE = None
+    _HOLIDAYS_CACHE = None
+
+
+@router.get("/admin/content", response_class=HTMLResponse)
+def admin_content(
+    request: Request,
+    limit_ok: None = Depends(admin_rate_limit),
+    _: None = Depends(verify_admin),
+):
+    """Панель управления цитатами и праздниками."""
+    session_id = get_session_id(request)
+    csrf_token = generate_csrf_token(session_id)
+    return templates.TemplateResponse(
+        request,
+        "admin.html",
+        {
+            "section": "content",
+            "quotes": _read_content_file("quotes.json"),
+            "holidays": _read_content_file("holidays.json"),
+            "title": f"{settings.app_title} — Контент",
+            "csrf_token": csrf_token,
+        },
+    )
+
+
+@router.post("/admin/content/quotes/add")
+def add_quote_route(
+    request: Request,
+    text: str = Form(...),
+    author: str = Form(default=""),
+    csrf_token: str = Form(default=""),
+    limit_ok: None = Depends(admin_rate_limit),
+    _: None = Depends(verify_admin),
+):
+    """Добавляет цитату в quotes.json."""
+    require_csrf(request, csrf_token)
+    text = text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Текст цитаты не может быть пустым")
+    records = _read_content_file("quotes.json")
+    records.append({"text": text, "author": author.strip()})
+    _write_content_file("quotes.json", records)
+    logger.info("Добавлена цитата через веб")
+    return RedirectResponse(url="/admin/content", status_code=303)
+
+
+@router.post("/admin/content/quotes/{idx}/delete")
+def delete_quote_route(
+    request: Request,
+    idx: int,
+    csrf_token: str = Form(default=""),
+    limit_ok: None = Depends(admin_rate_limit),
+    _: None = Depends(verify_admin),
+):
+    """Удаляет цитату по индексу."""
+    require_csrf(request, csrf_token)
+    records = _read_content_file("quotes.json")
+    if not 0 <= idx < len(records):
+        raise HTTPException(status_code=404, detail="Цитата не найдена")
+    removed = records.pop(idx)
+    _write_content_file("quotes.json", records)
+    logger.info("Удалена цитата: %s", removed.get("text", "")[:40])
+    return RedirectResponse(url="/admin/content", status_code=303)
+
+
+@router.post("/admin/content/holidays/add")
+def add_holiday_route(
+    request: Request,
+    holiday_date: str = Form(...),
+    name: str = Form(...),
+    greeting: str = Form(default="Праздник!"),
+    emoji: str = Form(default="\U0001F389"),
+    csrf_token: str = Form(default=""),
+    limit_ok: None = Depends(admin_rate_limit),
+    _: None = Depends(verify_admin),
+):
+    """Добавляет праздник в holidays.json."""
+    require_csrf(request, csrf_token)
+    holiday_date = holiday_date.strip()
+    name = name.strip()
+    if not re.fullmatch(r"\d{2}-\d{2}", holiday_date):
+        raise HTTPException(status_code=400, detail="Дата праздника должна быть в формате ММ-ДД")
+    if not name:
+        raise HTTPException(status_code=400, detail="Название праздника не может быть пустым")
+    records = _read_content_file("holidays.json")
+    records.append({
+        "date": holiday_date,
+        "name": name,
+        "greeting": greeting.strip() or "Праздник!",
+        "emoji": emoji.strip() or "\U0001F389",
+    })
+    _write_content_file("holidays.json", records)
+    logger.info("Добавлен праздник через веб: %s", name)
+    return RedirectResponse(url="/admin/content", status_code=303)
+
+
+@router.post("/admin/content/holidays/{idx}/delete")
+def delete_holiday_route(
+    request: Request,
+    idx: int,
+    csrf_token: str = Form(default=""),
+    limit_ok: None = Depends(admin_rate_limit),
+    _: None = Depends(verify_admin),
+):
+    """Удаляет праздник по индексу."""
+    require_csrf(request, csrf_token)
+    records = _read_content_file("holidays.json")
+    if not 0 <= idx < len(records):
+        raise HTTPException(status_code=404, detail="Праздник не найден")
+    removed = records.pop(idx)
+    _write_content_file("holidays.json", records)
+    logger.info("Удалён праздник: %s", removed.get("name", "")[:40])
+    return RedirectResponse(url="/admin/content", status_code=303)

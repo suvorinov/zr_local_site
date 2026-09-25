@@ -47,6 +47,19 @@
     .btn-small:hover { background: #555; }
     .btn-danger { background: #a33; }
     .btn-danger:hover { background: #822; }
+    .row-actions { display: flex; gap: 0.4rem; align-items: center; }
+    .row-actions form { margin: 0; }
+    .flash {
+        background: #e8f6e8;
+        border: 1px solid #43a047;
+        color: #1b5e20;
+        padding: 0.6rem 1rem;
+        border-radius: 6px;
+        margin-bottom: 1rem;
+        font-size: 0.95rem;
+    }
+    .import-row { display: flex; gap: 1rem; align-items: center; }
+    .import-row form { display: flex; gap: 0.6rem; align-items: center; margin: 0; }
     table {
         width: 100%;
         border-collapse: collapse;
@@ -162,9 +175,14 @@
     <div class="nav-tabs">
         <a href="/admin/employees"{% if section == 'employees' %} class="active"{% endif %}>Сотрудники</a>
         <a href="/admin/announcements"{% if section == 'announcements' %} class="active"{% endif %}>Объявления</a>
+        <a href="/admin/content"{% if section == 'content' %} class="active"{% endif %}>Контент</a>
     </div>
 
     {% if section == 'employees' %}
+
+    {% if report %}
+    <div class="flash">{{ report }}</div>
+    {% endif %}
 
     <div class="card">
         <h2>Поиск сотрудников</h2>
@@ -185,6 +203,29 @@
     </div>
 
     <div class="card">
+        {% if edit_employee %}
+        <h2>Редактировать сотрудника #{{ edit_employee.id }}</h2>
+        <form action="/admin/employees/{{ edit_employee.id }}/edit" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="field">
+                <label>ФИО</label>
+                <input type="text" name="name" required value="{{ edit_employee.name }}">
+            </div>
+            <div class="field">
+                <label>Дата рождения</label>
+                <input type="date" name="birthday" required value="{{ edit_employee.birthday }}">
+            </div>
+            <div class="field">
+                <label>Пол</label>
+                <select name="gender" required>
+                    <option value="male" {{ 'selected' if edit_employee.gender == 'male' }}>Мужской</option>
+                    <option value="female" {{ 'selected' if edit_employee.gender == 'female' }}>Женский</option>
+                </select>
+            </div>
+            <button class="btn" type="submit">Сохранить</button>
+            <a href="/admin/employees" class="btn-clear">Отмена</a>
+        </form>
+        {% else %}
         <h2>Добавить сотрудника</h2>
         <form action="/admin/employees/add" method="post">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -205,6 +246,20 @@
             </div>
             <button class="btn" type="submit">Добавить</button>
         </form>
+        {% endif %}
+    </div>
+
+    <div class="card">
+        <h2>Импорт / экспорт</h2>
+        <div class="import-row">
+            <form action="/admin/employees/import" method="post" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="file" name="file" accept=".csv" required>
+                <button class="btn" type="submit">Импортировать CSV</button>
+            </form>
+            <a href="/admin/employees/export" class="btn" style="text-decoration:none;">Скачать CSV</a>
+        </div>
+        <div class="search-count" style="margin-top:0.5rem;">Формат: ФИО;Дата рождения;Пол (Мужской/Женский). Импорт досинхронизирует по ФИО: обновляет совпадающих и добавляет новых.</div>
     </div>
 
     <div class="card">
@@ -221,7 +276,8 @@
                     <td>{{ emp.name }}</td>
                     <td>{{ emp.birthday|dfmt }}</td>
                     <td>{{ 'Мужской' if emp.gender == 'male' else 'Женский' }}</td>
-                    <td>
+                    <td class="row-actions">
+                        <a href="/admin/employees?edit_id={{ emp.id }}&{{ 'name=' + search_name + '&' if search_name }}{{ 'birthday=' + search_birthday + '&' if search_birthday }}page={{ page }}" class="btn-small" style="display:inline-block;text-decoration:none;background:#444;color:#eee;padding:0.3rem 0.6rem;border-radius:3px;font-size:0.8rem;">Редактировать</a>
                         <form action="/admin/employees/{{ emp.id }}/delete" method="post" onsubmit="return confirm('Удалить сотрудника?')">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                             <button class="btn-small btn-danger" type="submit">Удалить</button>
@@ -463,6 +519,76 @@
         {% else %}
         <div class="empty">Объявлений нет</div>
         {% endif %}
+    </div>
+
+    {% elif section == 'content' %}
+
+    <div class="card">
+        <h2>Цитаты</h2>
+        <div class="search-count">Всего цитат: {{ quotes|length }}</div>
+        {% if quotes %}
+        <table>
+            <thead><tr><th>Текст</th><th>Автор</th><th></th></tr></thead>
+            <tbody>
+                {% for q in quotes %}
+                <tr>
+                    <td>{{ q.text }}</td>
+                    <td>{{ q.author }}</td>
+                    <td>
+                        <form action="/admin/content/quotes/{{ loop.index0 }}/delete" method="post" onsubmit="return confirm('Удалить цитату?')">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button class="btn-small btn-danger" type="submit">Удалить</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty">Цитат нет</div>
+        {% endif %}
+        <form action="/admin/content/quotes/add" method="post" style="margin-top:0.8rem;display:flex;gap:0.6rem;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="text" name="text" required placeholder="Текст цитаты" style="flex:2;min-width:0;">
+            <input type="text" name="author" placeholder="Автор" style="flex:1;min-width:0;">
+            <button class="btn" type="submit">Добавить</button>
+        </form>
+    </div>
+
+    <div class="card">
+        <h2>Праздники</h2>
+        <div class="search-count">Всего праздников: {{ holidays|length }}</div>
+        {% if holidays %}
+        <table>
+            <thead><tr><th>Дата</th><th>Название</th><th>Поздравление</th><th>Эмодзи</th><th></th></tr></thead>
+            <tbody>
+                {% for h in holidays %}
+                <tr>
+                    <td>{{ h.date }}</td>
+                    <td>{{ h.name }}</td>
+                    <td>{{ h.greeting }}</td>
+                    <td>{{ h.emoji }}</td>
+                    <td>
+                        <form action="/admin/content/holidays/{{ loop.index0 }}/delete" method="post" onsubmit="return confirm('Удалить праздник?')">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button class="btn-small btn-danger" type="submit">Удалить</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty">Праздников нет</div>
+        {% endif %}
+        <form action="/admin/content/holidays/add" method="post" style="margin-top:0.8rem;display:flex;gap:0.6rem;flex-wrap:wrap;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="text" name="holiday_date" placeholder="ММ-ДД (напр. 01-05)" required style="width:130px;">
+            <input type="text" name="name" placeholder="Название" required style="flex:1;min-width:140px;">
+            <input type="text" name="greeting" placeholder="Поздравление" style="flex:1;min-width:140px;">
+            <input type="text" name="emoji" placeholder="🎉" style="width:70px;">
+            <button class="btn" type="submit">Добавить</button>
+        </form>
     </div>
 
     {% endif %}

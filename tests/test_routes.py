@@ -263,6 +263,116 @@ def test_post_announcement_rejects_non_image(client):
     assert resp.status_code == 400
 
 
+def test_post_employee_edit_with_csrf(client):
+    emp_id = db.add_employee("Старый Фамилия Имя", date(1990, 5, 5), "male")
+    resp = client.post(
+        f"/admin/employees/{emp_id}/edit",
+        data={
+            "csrf_token": _csrf_token(),
+            "name": "Новый Фамилия Имя",
+            "birthday": "1991-06-06",
+            "gender": "female",
+        },
+        headers=_auth(),
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    row = db.get_employee(emp_id)
+    assert row["name"] == "Новый Фамилия Имя"
+    assert row["birthday"] == "1991-06-06"
+    assert row["gender"] == "female"
+
+
+def test_admin_employees_edit_page(client):
+    emp_id = db.add_employee("Правка Фамилия Имя", date(1985, 3, 3), "male")
+    resp = client.get(f"/admin/employees?edit_id={emp_id}", headers=_auth())
+    assert resp.status_code == 200
+    assert "Редактировать сотрудника" in resp.text
+    assert "Правка Фамилия Имя" in resp.text
+
+
+def test_export_employees_csv(client):
+    resp = client.get("/admin/employees/export", headers=_auth())
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/csv")
+    assert "\ufeff" in resp.text
+    assert "ФИО" in resp.text
+
+
+def test_import_employees_csv(client):
+    csv_body = (
+        "\ufeffФИО;Дата рождения;Пол\n"
+        "ИмпортТест Один;01.02.1988;Мужской\n"
+        "ИмпортТест Два;1989-02-03;ж\n"
+    )
+    resp = client.post(
+        "/admin/employees/import",
+        data={"csrf_token": _csrf_token()},
+        headers=_auth(),
+        files={"file": ("staff.csv", csv_body.encode("utf-8"), "text/csv")},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    names = {e["name"] for e in db.get_employees()}
+    assert "ИмпортТест Один" in names
+    assert "ИмпортТест Два" in names
+    row = next(e for e in db.get_employees() if e["name"] == "ИмпортТест Два")
+    assert row["gender"] == "female"
+
+
+@pytest.fixture
+def _content_isolated(monkeypatch, tmp_path):
+    monkeypatch.setattr(routes, "_DATA_DIR", tmp_path)
+    routes._QUOTES_CACHE = None
+    routes._HOLIDAYS_CACHE = None
+    return tmp_path
+
+
+def test_admin_content_page(client, _content_isolated):
+    resp = client.get("/admin/content", headers=_auth())
+    assert resp.status_code == 200
+    assert "Цитаты" in resp.text and "Праздники" in resp.text
+
+
+def test_add_quote_and_holiday(client, _content_isolated):
+    resp = client.post("/admin/content/quotes/add", data={
+        "csrf_token": _csrf_token(),
+        "text": "Мудрость теста",
+        "author": "Тестер",
+    }, headers=_auth(), follow_redirects=False)
+    assert resp.status_code == 303
+    resp = client.post("/admin/content/holidays/add", data={
+        "csrf_token": _csrf_token(),
+        "holiday_date": "12-25",
+        "name": "День теста",
+        "greeting": "С праздником!",
+        "emoji": "🎇",
+    }, headers=_auth(), follow_redirects=False)
+    assert resp.status_code == 303
+    quotes = routes._read_content_file("quotes.json")
+    holidays = routes._read_content_file("holidays.json")
+    assert any(q["text"] == "Мудрость теста" for q in quotes)
+    assert any(h["date"] == "12-25" for h in holidays)
+
+
+def test_delete_quote_via_web(client, _content_isolated):
+    routes._write_content_file("quotes.json", [{"text": "Удаляемая", "author": ""}])
+    resp = client.post("/admin/content/quotes/0/delete", data={
+        "csrf_token": _csrf_token(),
+    }, headers=_auth(), follow_redirects=False)
+    assert resp.status_code == 303
+    assert routes._read_content_file("quotes.json") == []
+
+
+def test_add_holiday_rejects_bad_date(client, _content_isolated):
+    resp = client.post("/admin/content/holidays/add", data={
+        "csrf_token": _csrf_token(),
+        "holiday_date": "недата",
+        "name": "Плохой",
+    }, headers=_auth(), follow_redirects=False)
+    assert resp.status_code == 400
+
+
 def test_birthday_item_enqueues_background_generation(monkeypatch, tmp_path):
     class BackgroundTasks:
         def __init__(self):

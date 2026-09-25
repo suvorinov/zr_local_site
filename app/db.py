@@ -223,6 +223,31 @@ def delete_employee(employee_id: int) -> bool:
         return deleted
 
 
+def update_employee(employee_id: int, name: str, birthday: date, gender: str) -> bool:
+    """Обновляет данные сотрудника.
+
+    Args:
+        employee_id: Идентификатор сотрудника.
+        name: Новое ФИО.
+        birthday: Новая дата рождения.
+        gender: Новый пол (male/female).
+
+    Returns:
+        True если запись обновлена, иначе False.
+    """
+    with get_db() as conn:
+        cur = conn.execute(
+            "UPDATE employees SET name = ?, birthday = ?, gender = ? WHERE id = ?",
+            (name, birthday.isoformat(), gender, employee_id),
+        )
+        ok = cur.rowcount > 0
+        if ok:
+            logger.info("Обновлён сотрудник id=%d: %s", employee_id, name)
+        else:
+            logger.warning("Сотрудник id=%d не найден для обновления", employee_id)
+        return ok
+
+
 def get_birthday_employees() -> list[dict]:
     """Находит сотрудников с днём рождения сегодня.
 
