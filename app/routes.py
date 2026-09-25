@@ -12,6 +12,7 @@ import random
 import re
 import threading
 import time
+import uuid
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -19,7 +20,18 @@ import bcrypt
 import bleach
 import markdown as md_lib
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.templating import Jinja2Templates
@@ -51,6 +63,13 @@ from app.weather import get_all_forecast, get_forecast
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+ANN_CATEGORY_LABELS = {
+    "info": "Объявление",
+    "important": "Важное",
+    "event": "Событие",
+    "congrats": "Поздравление",
+}
 
 _DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
@@ -250,14 +269,45 @@ def _cleanup_old_greetings(employee_name: str, current: Path) -> None:
                 logger.warning("Не удалось удалить %s: %s", old.name, e)
 
 
-def _get_birthday_items() -> list[dict]:
+_GREETING_LOCKS: dict[str, threading.Lock] = {}
+_GREETING_LOCKS_GUARD = threading.Lock()
+
+
+def _greeting_lock(path: Path) -> threading.Lock:
+    """Возвращает lock для пути открытки (защита от двойной генерации)."""
+    with _GREETING_LOCKS_GUARD:
+        return _GREETING_LOCKS.setdefault(str(path), threading.Lock())
+
+
+def _generate_greeting_in_background(emp: dict, age: int, greeting_path: Path) -> None:
+    """Генерирует открытку в фоновой задаче (после ответа клиенту)."""
+    with _greeting_lock(greeting_path):
+        if greeting_path.exists():
+            return
+        try:
+            abs_path = generate_greeting(
+                employee_name=emp["name"],
+                gender=emp["gender"],
+                age=age,
+            )
+            out = Path(abs_path)
+            log_greeting(emp["id"], abs_path)
+            logger.info("Поздравление создано в фоне для %s", emp["name"])
+            _cleanup_old_greetings(emp["name"], out)
+        except Exception as e:
+            logger.error("Ошибка фоновой генерации для %s: %s", emp["name"], e)
+
+
+def _get_birthday_items(background_tasks: BackgroundTasks | None = None) -> list[dict]:
     """Собирает поздравления именинников для показа карточками.
 
-    Если изображение для именинника ещё не сгенерировано —
-    создаёт его на лету с учётом пола и возраста (юбилей).
+    Если изображение ещё не сгенерировано и передан background_tasks —
+    сразу возвращает текстовую заглушку, а генерацию ставит в фон, чтобы
+    GET / оставался мгновенным. Без background_tasks генерит на лету
+    (автономные сценарии).
 
     Returns:
-        Список элементов типа birthday для ротации.
+        Список элементов типа birthday/holiday для ротации.
     """
     items: list[dict] = []
     today = timeutils.today()
@@ -267,6 +317,17 @@ def _get_birthday_items() -> list[dict]:
         age = compute_age(emp.get("birthday"), today)
         greeting_path = greeting_filename(emp["name"], age)
         if not greeting_path.exists():
+            if background_tasks is not None:
+                background_tasks.add_task(
+                    _generate_greeting_in_background, emp, age, greeting_path
+                )
+                items.append({
+                    "type": "holiday",
+                    "emoji": "\U0001F382",
+                    "greeting": "С Днём Рождения!",
+                    "name": emp["name"],
+                })
+                continue
             try:
                 abs_path = generate_greeting(
                     employee_name=emp["name"],
@@ -455,13 +516,14 @@ def healthz():
 
 
 @router.get("/", response_class=HTMLResponse)
-def index(request: Request):
+def index(request: Request, background_tasks: BackgroundTasks):
     """Главная страница-информер.
 
     Показывает informer.html с датой, временем, погодой,
     карточками именинников и бегущей строкой объявлений внизу.
+    Открытки, которых ещё нет, догенерил довком в фоне (BackgroundTasks).
     """
-    items = _get_birthday_items() + _get_holiday_items()
+    items = _get_birthday_items(background_tasks) + _get_holiday_items()
     ticker_items = _get_ticker_items()
 
     now = timeutils.now()
@@ -476,6 +538,10 @@ def index(request: Request):
     quotes = _get_quotes()
     quote = random.choice(quotes)
     news = get_news_items()
+    announcements = [
+        dict(a, category_label=ANN_CATEGORY_LABELS.get(a.get("category"), (a.get("category") or "info").capitalize()))
+        for a in get_announcements(active_only=True)
+    ]
 
     forecast = get_forecast()
     forecast_all = get_all_forecast()
@@ -505,6 +571,7 @@ def index(request: Request):
         "rotation_seconds": settings.rotation_seconds,
         "empty_rotation_seconds": settings.empty_rotation_seconds,
         "upcoming_birthdays": next_birthdays,
+        "announcements": announcements,
         "quote_text": quote["text"],
         "quote_author": quote["author"],
         "quotes_json": json.dumps(quotes, ensure_ascii=False),
@@ -654,6 +721,43 @@ def delete_employee_route(
     return RedirectResponse(url="/admin/employees", status_code=303)
 
 
+_UPLOAD_DIR = Path("app") / "static" / "uploads"
+_ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+_MAX_IMAGE_BYTES = 5 * 1024 * 1024
+
+
+def _save_announcement_image(upload: UploadFile | None) -> str | None:
+    """Сохраняет загруженное изображение карточки и возвращает URL к нему."""
+    if upload is None or not upload.filename:
+        return None
+    if upload.content_type not in _ALLOWED_IMAGE_TYPES:
+        raise HTTPException(status_code=400, detail="Допускаются только изображения JPEG/PNG/GIF/WebP")
+    data = upload.file.read(_MAX_IMAGE_BYTES + 1)
+    if len(data) > _MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=400, detail="Изображение больше 5 МБ")
+    ext = {
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "image/gif": ".gif",
+        "image/webp": ".webp",
+    }[upload.content_type]
+    _UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    name = f"ann_{int(time.time())}_{uuid.uuid4().hex[:8]}{ext}"
+    (_UPLOAD_DIR / name).write_bytes(data)
+    logger.info("Загружено изображение объявления: %s", name)
+    return f"/static/uploads/{name}"
+
+
+def _delete_announcement_image(url: str | None) -> None:
+    """Удаляет файл изображения объявления (если путь в наших uploads)."""
+    if not url or not url.startswith("/static/uploads/"):
+        return
+    try:
+        Path("app" + url).unlink(missing_ok=True)
+    except OSError:
+        logger.warning("Не удалось удалить изображение: %s", url)
+
+
 @router.post("/admin/announcements/add")
 def add_announcement_route(
     request: Request,
@@ -665,21 +769,33 @@ def add_announcement_route(
     date_from: str = Form(default=""),
     date_to: str = Form(default=""),
     priority: int = Form(default=0),
+    category: str = Form(default="info"),
+    is_pinned: int = Form(default=0),
+    image: UploadFile | None = File(default=None),
 ):
-    """Добавляет новое объявление (бегущая строка — только текст и сроки)."""
+    """Добавляет новое объявление: карточка в информере + бегущая строка."""
     require_csrf(request, csrf_token)
     try:
         start = date.fromisoformat(date_from) if date_from else None
         end = date.fromisoformat(date_to) if date_to else None
     except ValueError:
         raise HTTPException(status_code=400, detail="Некорректная дата")
-    add_announcement(
-        title=title,
-        text=text,
-        date_from=start,
-        date_to=end,
-        priority=priority,
-    )
+    image_path = _save_announcement_image(image)
+    try:
+        add_announcement(
+            title=title,
+            text=text,
+            date_from=start,
+            date_to=end,
+            priority=priority,
+            category=category or "info",
+            is_pinned=bool(is_pinned),
+            image_path=image_path,
+        )
+    except Exception:
+        if image_path:
+            _delete_announcement_image(image_path)
+        raise
     logger.info("Объявление добавлено через веб: %s", title or text[:50])
     return RedirectResponse(url="/admin/announcements", status_code=303)
 
@@ -733,14 +849,31 @@ def edit_announcement_route(
     date_from: str = Form(default=""),
     date_to: str = Form(default=""),
     priority: int = Form(default=0),
+    category: str = Form(default="info"),
+    is_pinned: int = Form(default=0),
+    remove_image: int = Form(default=0),
+    image: UploadFile | None = File(default=None),
 ):
-    """Обновляет объявление (бегущая строка — только текст и сроки)."""
+    """Обновляет объявление: карточка в информере + бегущая строка."""
     require_csrf(request, csrf_token)
     try:
         start = date.fromisoformat(date_from) if date_from else None
         end = date.fromisoformat(date_to) if date_to else None
     except ValueError:
         raise HTTPException(status_code=400, detail="Некорректная дата")
+    existing = get_announcement(announcement_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Объявление не найдено")
+    old_image = existing.get("image_path")
+    new_image = _save_announcement_image(image)
+    if new_image:
+        image_path = new_image
+        _delete_announcement_image(old_image)
+    elif remove_image:
+        image_path = None
+        _delete_announcement_image(old_image)
+    else:
+        image_path = old_image
     update_announcement(
         announcement_id=announcement_id,
         title=title,
@@ -748,6 +881,9 @@ def edit_announcement_route(
         date_from=start,
         date_to=end,
         priority=priority,
+        category=category or "info",
+        is_pinned=bool(is_pinned),
+        image_path=image_path,
     )
     logger.info("Объявление id=%d отредактировано через веб", announcement_id)
     return RedirectResponse(url="/admin/announcements", status_code=303)

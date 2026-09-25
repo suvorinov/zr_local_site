@@ -408,6 +408,78 @@
         font-style: italic;
     }
 
+    /* ===== Карточки объявлений ===== */
+    .ann-list {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .ann-card {
+        display: none;
+        background: #fff;
+        border-radius: 16px;
+        box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+        overflow: hidden;
+        max-width: min(74vw, 1150px);
+        max-height: 74vh;
+        align-items: stretch;
+        text-align: left;
+    }
+    .ann-card.active { display: flex; }
+    .ann-card.cat-important { box-shadow: 0 8px 30px rgba(233,69,96,0.35); }
+    .ann-card .ann-image {
+        flex: 0 0 auto;
+        width: clamp(240px, 30vw, 380px);
+        max-height: 70vh;
+        object-fit: cover;
+    }
+    .ann-card .ann-body {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: clamp(1.4rem, 3vh, 2.5rem) clamp(1.6rem, 3vw, 3rem);
+        min-width: 0;
+    }
+    .ann-card .ann-badge {
+        display: inline-block;
+        align-self: flex-start;
+        font-size: clamp(0.7rem, 1.1vw, 0.95rem);
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        padding: 0.25rem 0.7rem;
+        border-radius: 999px;
+        margin-bottom: 0.8rem;
+        background: #e8e8e8;
+        color: #555;
+    }
+    .ann-card.cat-important .ann-badge { background: var(--accent); color: #fff; }
+    .ann-card.cat-event .ann-badge { background: #4a90d9; color: #fff; }
+    .ann-card.cat-congrats .ann-badge { background: #43a047; color: #fff; }
+    .ann-card .ann-title {
+        font-size: clamp(1.5rem, 3.2vw, 2.8rem);
+        font-weight: 800;
+        color: var(--ink);
+        line-height: 1.2;
+        margin-bottom: 0.8rem;
+    }
+    .ann-card .ann-text {
+        font-size: clamp(1rem, 1.9vw, 1.6rem);
+        color: #333;
+        line-height: 1.45;
+        white-space: pre-wrap;
+        overflow-y: auto;
+        max-height: 42vh;
+    }
+    .ann-card .ann-date {
+        margin-top: 0.8rem;
+        color: var(--muted);
+        font-size: clamp(0.8rem, 1.2vw, 1rem);
+    }
+
     /* ===== Адаптив =====
        TV-экраны широкие — главный лимит высота, поэтому max-height.
        max-width только для десктоп-браузеров в маленьком окне. */
@@ -492,6 +564,27 @@
             <div class="quote-text" id="quote-text">&laquo;{{ quote_text }}&raquo;</div>
             <div class="quote-author" id="quote-author">&mdash; {{ quote_author }}</div>
         </div>
+        {% if announcements %}
+        <div class="info-block" data-info="announcements">
+            <div class="ann-list">
+                {% for ann in announcements %}
+                <div class="ann-card cat-{{ ann.category or 'info' }}{% if loop.first %} active{% endif %}" data-ann="{{ loop.index0 }}">
+                    {% if ann.image_path %}<img class="ann-image" src="{{ ann.image_path }}" alt="Объявление">{% endif %}
+                    <div class="ann-body">
+                        <span class="ann-badge">{{ ann.category_label }}</span>
+                        {% if ann.title %}<div class="ann-title">{{ ann.title }}</div>{% endif %}
+                        <div class="ann-text">{{ ann.text }}</div>
+                        {% if ann.date_from or ann.date_to %}<div class="ann-date">
+                            {% if ann.date_from and ann.date_to %}с {{ ann.date_from|dfmt }} по {{ ann.date_to|dfmt }}
+                            {% elif ann.date_from %}с {{ ann.date_from|dfmt }}
+                            {% else %}до {{ ann.date_to|dfmt }}{% endif %}
+                        </div>{% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
         {% if news %}
         <div class="info-block" data-info="news">
             <div class="news-head">
@@ -686,6 +779,24 @@
         }, 9000);
     }
 
+    /* ===== Ротация карточек объявлений внутри своего блока ===== */
+    var annBlocks = [].slice.call(document.querySelectorAll('.ann-card'));
+    var annIdx = 0;
+    function showAnnItem() {
+        if (annBlocks.length === 0) return;
+        annIdx = annIdx % annBlocks.length;
+        annBlocks.forEach(function(c, i) {
+            c.classList.toggle('active', i === annIdx);
+        });
+    }
+    showAnnItem();
+    if (annBlocks.length > 1) {
+        setInterval(function() {
+            annIdx = (annIdx + 1) % annBlocks.length;
+            showAnnItem();
+        }, 12000);
+    }
+
     /* ===== Прогноз погоды (обновление каждый час) ===== */
     var forecastData = (function() {
         var el = document.getElementById('forecast-data');
@@ -785,6 +896,69 @@
     }
     applyNightMode();
     setInterval(applyNightMode, 5 * 60 * 1000);
+
+    /* ===== Живое обновление данных: fetch свежего HTML, мягкая замена ===== */
+    var REFRESH_MS = 30 * 60 * 1000;
+
+    function readJsonData(id, fallback) {
+        var el = document.getElementById(id);
+        if (!el) return fallback;
+        try { return JSON.parse(el.textContent); } catch (e) { return fallback; }
+    }
+
+    function swapInner(selector) {
+        var oldEl = document.querySelector(selector);
+        var newEl = doc.querySelector(selector);
+        if (oldEl && newEl) oldEl.innerHTML = newEl.innerHTML;
+        else if (oldEl && !newEl) oldEl.innerHTML = '';
+    }
+
+    function swapElement(selector) {
+        var oldEl = document.querySelector(selector);
+        var newEl = doc.querySelector(selector);
+        if (oldEl && newEl) oldEl.outerHTML = newEl.outerHTML;
+        else if (oldEl && !newEl) oldEl.remove();
+    }
+
+    function softRefresh() {
+        fetch('/?refresh=1', { cache: 'no-store' })
+            .then(function(resp) { if (!resp.ok) throw new Error('bad status'); return resp.text(); })
+            .then(function(html) {
+                doc = new DOMParser().parseFromString(html, 'text/html');
+                swapInner('.ticker-track');
+                swapInner('.ann-list');
+                swapElement('[data-info="birthday"]');
+                swapElement('#date-line');
+                swapElement('#date-big');
+                swapElement('#quote-text');
+                swapElement('#quote-author');
+
+                ['quotes-data', 'news-data', 'forecast-data'].forEach(function(id) {
+                    var oldEl = document.getElementById(id);
+                    var newEl = doc.getElementById(id);
+                    if (oldEl && newEl) oldEl.textContent = newEl.textContent;
+                });
+
+                quotesData = readJsonData('quotes-data', quotesData);
+                quotePool = quotesData.slice();
+                newsItems = readJsonData('news-data', newsItems);
+                newsIdx = 0;
+                showNewsItem();
+                forecastData = readJsonData('forecast-data', forecastData);
+                prevHour = -1;
+                updateForecast();
+
+                annBlocks = [].slice.call(document.querySelectorAll('.ann-card'));
+                annIdx = 0;
+                showAnnItem();
+
+                ticker = document.getElementById('ticker');
+                if (ticker && typeof animateTicker === 'function') animateTicker();
+            })
+            .catch(function() { /* сетевая ошибка — повторим в следующем цикле */ });
+    }
+
+    setInterval(softRefresh, REFRESH_MS);
 })();
 </script>
 {% endblock %}

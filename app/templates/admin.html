@@ -282,22 +282,48 @@
     {% if edit_announcement %}
     <div class="card">
         <h2>Редактировать объявление #{{ edit_announcement.id }}</h2>
-        <form action="/admin/announcements/{{ edit_announcement.id }}/edit" method="post">
+        <form action="/admin/announcements/{{ edit_announcement.id }}/edit" method="post" enctype="multipart/form-data">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <div class="form-row">
                 <div class="field" style="flex:1;">
                     <label>Заголовок</label>
                     <input type="text" name="title" value="{{ edit_announcement.title or '' }}" placeholder="Заголовок объявления">
                 </div>
-                <div class="field" style="width:120px;">
+                <div class="field" style="width:160px;">
+                    <label>Категория</label>
+                    <select name="category">
+                        <option value="info" {{ 'selected' if (edit_announcement.category or 'info') == 'info' }}>Обычное</option>
+                        <option value="important" {{ 'selected' if edit_announcement.category == 'important' }}>Важное</option>
+                        <option value="event" {{ 'selected' if edit_announcement.category == 'event' }}>Событие</option>
+                        <option value="congrats" {{ 'selected' if edit_announcement.category == 'congrats' }}>Поздравление</option>
+                    </select>
+                </div>
+                <div class="field" style="width:110px;">
                     <label>Приоритет</label>
                     <input type="number" name="priority" value="{{ edit_announcement.priority or 0 }}" min="0" max="999">
+                </div>
+                <div class="field" style="width:130px;justify-content:flex-end;">
+                    <label><input type="checkbox" name="is_pinned" value="1" {{ 'checked' if edit_announcement.is_pinned }}> Закрепить</label>
                 </div>
             </div>
             <div class="form-row" style="margin-top:0.5rem;">
                 <div style="flex:1;display:flex;flex-direction:column;">
                     <label>Текст объявления</label>
                     <textarea name="text" required placeholder="Текст корпоративного объявления...">{{ edit_announcement.text }}</textarea>
+                </div>
+            </div>
+            <div class="form-row" style="margin-top:0.5rem;">
+                <div class="field" style="flex:1;">
+                    <label>Изображение карточки</label>
+                    <input type="file" name="image" accept="image/*">
+                    {% if edit_announcement.image_path %}
+                    <div style="margin-top:0.5rem;">
+                        <img src="{{ edit_announcement.image_path }}" style="max-width:220px;max-height:120px;border-radius:4px;"><br>
+                        <label style="margin-top:0.3rem;display:block;font-size:0.9rem;">
+                            <input type="checkbox" name="remove_image" value="1"> Удалить изображение
+                        </label>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
             <div class="form-row" style="margin-top:0.5rem;">
@@ -317,22 +343,40 @@
     {% else %}
     <div class="card">
         <h2>Добавить объявление</h2>
-        <form action="/admin/announcements/add" method="post">
+        <form action="/admin/announcements/add" method="post" enctype="multipart/form-data">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <div class="form-row">
                 <div class="field" style="flex:1;">
                     <label>Заголовок</label>
                     <input type="text" name="title" placeholder="Заголовок объявления">
                 </div>
-                <div class="field" style="width:120px;">
+                <div class="field" style="width:160px;">
+                    <label>Категория</label>
+                    <select name="category">
+                        <option value="info">Обычное</option>
+                        <option value="important">Важное</option>
+                        <option value="event">Событие</option>
+                        <option value="congrats">Поздравление</option>
+                    </select>
+                </div>
+                <div class="field" style="width:110px;">
                     <label>Приоритет</label>
                     <input type="number" name="priority" value="0" min="0" max="999">
+                </div>
+                <div class="field" style="width:130px;justify-content:flex-end;">
+                    <label><input type="checkbox" name="is_pinned" value="1"> Закрепить</label>
                 </div>
             </div>
             <div class="form-row" style="margin-top:0.5rem;">
                 <div style="flex:1;display:flex;flex-direction:column;">
                     <label>Текст объявления</label>
                     <textarea name="text" required placeholder="Текст корпоративного объявления..."></textarea>
+                </div>
+            </div>
+            <div class="form-row" style="margin-top:0.5rem;">
+                <div class="field" style="flex:1;">
+                    <label>Изображение карточки</label>
+                    <input type="file" name="image" accept="image/*">
                 </div>
             </div>
             <div class="form-row" style="margin-top:0.5rem;">

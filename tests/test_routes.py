@@ -3,6 +3,8 @@
 import base64
 import contextlib
 import hashlib
+from datetime import date
+from pathlib import Path
 from types import SimpleNamespace
 
 import bcrypt
@@ -21,6 +23,9 @@ def _hermetic_content(monkeypatch):
     monkeypatch.setattr(routes, "get_news_items", lambda: [])
     monkeypatch.setattr(routes, "get_all_forecast", lambda: [])
     monkeypatch.setattr(routes, "get_forecast", lambda: [])
+    routes._admin_hits.clear()
+    yield
+    routes._admin_hits.clear()
 
 
 @pytest.fixture
@@ -192,3 +197,88 @@ def test_admin_rate_limit_returns_429(client):
         assert resp.status_code in (401, 200)
     resp = client.get("/admin/employees")
     assert resp.status_code == 429
+
+
+def test_post_announcement_with_category_pinned(client):
+    resp = client.post(
+        "/admin/announcements/add",
+        data={
+            "csrf_token": _csrf_token(),
+            "title": "Карточка",
+            "text": "Текст карточки",
+            "category": "important",
+            "is_pinned": "1",
+        },
+        headers=_auth(),
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    rows = [a for a in db.get_announcements(active_only=False) if a["title"] == "Карточка"]
+    assert rows and rows[-1]["category"] == "important" and rows[-1]["is_pinned"] == 1
+
+
+def test_main_page_renders_announcement_card(client):
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert "ann-card" in resp.text or "ann-list" not in resp.text
+
+
+def test_post_announcement_with_image(client):
+    png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
+    resp = client.post(
+        "/admin/announcements/add",
+        data={
+            "csrf_token": _csrf_token(),
+            "title": "С картинкой",
+            "text": "Текст",
+            "category": "event",
+        },
+        headers=_auth(),
+        files={"image": ("pic.png", png, "image/png")},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    rows = [a for a in db.get_announcements(active_only=False) if a["title"] == "С картинкой"]
+    url = rows[-1]["image_path"]
+    assert url and url.startswith("/static/uploads/")
+    fpath = Path("app" + url)
+    try:
+        assert fpath.exists() and fpath.read_bytes() == png
+    finally:
+        fpath.unlink(missing_ok=True)
+
+
+def test_post_announcement_rejects_non_image(client):
+    resp = client.post(
+        "/admin/announcements/add",
+        data={
+            "csrf_token": _csrf_token(),
+            "title": "Не картинка",
+            "text": "Текст",
+        },
+        headers=_auth(),
+        files={"image": ("f.txt", b"not an image", "text/plain")},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 400
+
+
+def test_birthday_item_enqueues_background_generation(monkeypatch, tmp_path):
+    class BackgroundTasks:
+        def __init__(self):
+            self.tasks = []
+
+        def add_task(self, fn, *args, **kwargs):
+            self.tasks.append((fn, args, kwargs))
+
+    bg = BackgroundTasks()
+    monkeypatch.setattr(
+        routes,
+        "get_birthday_employees",
+        lambda: [{"id": 1, "name": "Тест Тестович", "gender": "male", "birthday": date.today().isoformat()}],
+    )
+    monkeypatch.setattr(routes, "greeting_filename", lambda name, age: tmp_path / f"{name}.png")
+    items = routes._get_birthday_items(bg)
+    assert bg.tasks, "ожидалась фоновая задача генерации открытки"
+    assert items and items[0]["type"] == "holiday"
+    assert "Тест Тестович" in items[0]["name"]
